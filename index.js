@@ -137,7 +137,7 @@ const server = new Server({
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [{
     name: 'execute',
-    description: `Execute JavaScript code with ${7 + allMcpTools.length} tools: Edit, Glob, Grep, Bash, LS, Read, Write + ${allMcpTools.map(t => t.name).join(', ')}`,
+    description: `Execute JavaScript code with ${7 + allMcpTools.length} tools: Edit, Glob, Grep, Bash, LS, Read, Write + ${allMcpTools.map(t => t.name).join(', ')}. MCP tool wrappers are automatically injected.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -156,20 +156,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   const { code, workingDirectory = process.cwd() } = request.params.arguments;
 
-  // Add MCP tool wrappers to the code
+  // Generate MCP tool wrappers
   const mcpWrappers = [
     ...vexifyTools.map(t => createMCPToolWrapper(t.name, 'vexify')),
     ...playwrightTools.map(t => createMCPToolWrapper(t.name, 'playwright'))
   ].join('\n\n');
 
-  const enhancedCode = `
-${mcpWrappers}
-
-${code}
-`;
-
   try {
-    const result = await execute({ code: enhancedCode, workingDirectory });
+    const result = await execute({ code, mcpWrappers, workingDirectory });
     return {
       content: [{ type: 'text', text: JSON.stringify(result) }]
     };
