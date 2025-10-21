@@ -1,38 +1,29 @@
 {
   "name": "alfred-ai",
-  "version": "2.4.0",
-  "description": "Alfred - Your trusted AI coding assistant. Like Batman's Alfred, but for code. Built-in tools, Playwright automation, and Vexify folder search via MCP.",
-  "main": "marvin.js",
+  "version": "3.1.2",
+  "description": "Alfred - Agent mode only. Direct tool execution with Edit, Glob, Grep, Bash, LS, Read, Write.",
+  "main": "index.js",
   "type": "module",
   "bin": {
-    "alfred": "marvin.js",
-    "alfred-agentic": "agentic-mode-mcp.js"
+    "alfred": "index.js"
   },
   "scripts": {
-    "start": "node marvin.js"
+    "start": "node index.js"
   },
   "files": [
-    "marvin.js",
-    "execute-tool.js",
+    "index.js",
     "agentic-mode.js",
-    "agentic-mode-mcp.js",
     "built-in-tools-mcp.js",
     "vexify-mcp-server.js",
     "ast-grep-wrapper.js",
     "ast-error-handling.js",
-    ".codemode.json",
-    "README.md",
-    "CLAUDE.md"
+    "README.md"
   ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^0.5.0",
     "fast-glob": "^3.3.3",
     "@mozilla/readability": "^0.6.0",
-    "node-fetch": "^3.3.2",
-    "uuid": "^9.0.1"
-  },
-  "devDependencies": {
-    "chalk": "^4.1.2"
+    "node-fetch": "^3.3.2"
   },
   "keywords": [
     "mcp",
