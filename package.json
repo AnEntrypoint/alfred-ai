@@ -1,6 +1,6 @@
 {
   "name": "alfred-ai",
-  "version": "1.0.0",
+  "version": "2.2.0",
   "description": "Alfred - Your trusted AI coding assistant. Like Batman's Alfred, but for code. Built-in tools, Playwright automation, and Vexify folder search via MCP.",
   "main": "marvin.js",
   "type": "module",
@@ -8,19 +8,17 @@
     "alfred": "marvin.js"
   },
   "scripts": {
-    "start": "node marvin.js",
-    "test": "node test.js",
-    "test:validation": "node validation-test.js"
+    "start": "node marvin.js"
   },
   "files": [
     "marvin.js",
+    "execute-tool.js",
+    "agentic-mode.js",
     "built-in-tools-mcp.js",
     "vexify-mcp-server.js",
     "ast-grep-wrapper.js",
     "ast-error-handling.js",
     ".codemode.json",
-    "test.js",
-    "validation-test.js",
     "README.md",
     "CLAUDE.md"
   ],
