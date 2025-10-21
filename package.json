@@ -1,6 +1,6 @@
 {
   "name": "alfred-ai",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Alfred - Your trusted AI coding assistant. Like Batman's Alfred, but for code. Built-in tools, Playwright automation, and Vexify folder search via MCP.",
   "main": "marvin.js",
   "type": "module",
