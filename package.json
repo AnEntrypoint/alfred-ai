@@ -1,6 +1,6 @@
 {
   "name": "alfred-ai",
-  "version": "3.1.2",
+  "version": "3.1.3",
   "description": "Alfred - Agent mode only. Direct tool execution with Edit, Glob, Grep, Bash, LS, Read, Write.",
   "main": "index.js",
   "type": "module",

@@ -81,12 +81,15 @@ const internalTools = {
 };
 
 // The ONE tool exposed: execute
-async function execute({ code, workingDirectory = process.cwd() }) {
+async function execute({ code, mcpWrappers = '', workingDirectory = process.cwd() }) {
   const wrappedCode = `
 // Built-in tools available in execution context
 ${Object.entries(internalTools).map(([name, fn]) =>
   `const ${name} = ${fn.toString()};`
 ).join('\n')}
+
+// MCP tool wrappers
+${mcpWrappers}
 
 // User code
 (async () => {
