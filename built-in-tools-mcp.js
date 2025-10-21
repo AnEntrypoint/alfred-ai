@@ -540,6 +540,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ['path', 'transformations']
         }
+      },
+      {
+        name: 'execute',
+        description: 'Execute JavaScript code with all built-in tools available in scope',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', description: 'JavaScript code to execute' },
+            workingDirectory: { type: 'string', description: 'Working directory for execution' }
+          },
+          required: ['code']
+        }
       }
     ]
   };
@@ -618,6 +630,94 @@ async function runProjectWideLint() {
   }
 }
 
+async function handleExecute(args) {
+  const { code, workingDirectory = WORKING_DIRECTORY } = args;
+
+  return new Promise((resolve, reject) => {
+    const wrappedCode = `
+import { readFileSync, writeFileSync, readdirSync, statSync } from 'fs';
+import { join, resolve as resolvePath } from 'path';
+import { spawn } from 'child_process';
+import fg from 'fast-glob';
+
+const WORKING_DIRECTORY = '${workingDirectory.replace(/'/g, "\\'")}';
+
+const Edit = async ({ file_path, old_string, new_string, replace_all = false }) => {
+  const content = readFileSync(file_path, 'utf8');
+  if (replace_all) {
+    writeFileSync(file_path, content.replaceAll(old_string, new_string), 'utf8');
+    return 'OK';
+  }
+  writeFileSync(file_path, content.replace(old_string, new_string), 'utf8');
+  return 'OK';
+};
+
+const Glob = async ({ pattern, path = WORKING_DIRECTORY }) => {
+  return await fg(pattern, { cwd: path, absolute: true });
+};
+
+const Grep = async ({ pattern, path = WORKING_DIRECTORY, output_mode = 'files_with_matches', glob, type }) => {
+  const args = [pattern, path, '--json'];
+  if (glob) args.push('--glob', glob);
+  if (type) args.push('--type', type);
+  if (output_mode === 'files_with_matches') args.push('-l');
+  if (output_mode === 'count') args.push('--count');
+
+  return new Promise((resolve, reject) => {
+    const proc = spawn('rg', args);
+    let stdout = '';
+    proc.stdout.on('data', d => stdout += d);
+    proc.on('close', () => resolve(stdout));
+    proc.on('error', reject);
+  });
+};
+
+const Bash = async ({ command, timeout = 120000 }) => {
+  return new Promise((resolve, reject) => {
+    const proc = spawn('bash', ['-c', command], { cwd: WORKING_DIRECTORY, timeout });
+    let stdout = '', stderr = '';
+    proc.stdout.on('data', d => stdout += d);
+    proc.stderr.on('data', d => stderr += d);
+    proc.on('close', () => resolve(stdout + stderr));
+    proc.on('error', reject);
+  });
+};
+
+const LS = async ({ path = WORKING_DIRECTORY }) => {
+  return readdirSync(path).map(name => {
+    const fullPath = join(path, name);
+    const stat = statSync(fullPath);
+    return { name, isDirectory: stat.isDirectory(), size: stat.size };
+  });
+};
+
+const Read = async ({ file_path }) => readFileSync(file_path, 'utf8');
+const Write = async ({ file_path, content }) => { writeFileSync(file_path, content, 'utf8'); return 'OK'; };
+
+(async () => {
+${code}
+})();
+`;
+
+    const proc = spawn('node', ['--input-type=module', '--eval', wrappedCode], {
+      cwd: workingDirectory,
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    let stdout = '', stderr = '';
+    proc.stdout.on('data', d => stdout += d);
+    proc.stderr.on('data', d => stderr += d);
+    proc.on('close', code => {
+      if (code === 0) {
+        resolve(stdout || 'Execution completed successfully');
+      } else {
+        reject(new Error(`Execution failed (exit code ${code}):\n${stderr}`));
+      }
+    });
+    proc.on('error', reject);
+  });
+}
+
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
@@ -663,6 +763,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
       case 'ASTModify':
         result = await handleASTModify(args);
+        break;
+      case 'execute':
+        result = await handleExecute(args);
         break;
       default:
         throw new Error(`Unknown tool: ${name}`);

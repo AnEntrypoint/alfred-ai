@@ -11,6 +11,7 @@ import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import * as fs from 'fs';
 import { join, resolve, dirname } from 'path';
 import { EventEmitter } from 'events';
+import { createExecuteTool } from './execute-tool.js';
 import { tmpdir } from 'os';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -51,11 +52,15 @@ function loadConfig() {
 
   try {
     const configData = JSON.parse(readFileSync(configPath, 'utf8'));
-    if (!configData.mcpServers) {
-      throw new Error('BRUTAL ERROR: config.mcpServers is undefined');
+
+    // Support both formats: {mcpServers: ...} and {config: {mcpServers: ...}}
+    const actualConfig = configData.config || configData;
+
+    if (!actualConfig.mcpServers) {
+      throw new Error('BRUTAL ERROR: mcpServers is undefined in config');
     }
     return {
-      config: configData,
+      config: actualConfig,
       configDir: dirname(configPath)
     };
   } catch (error) {
@@ -65,16 +70,23 @@ function loadConfig() {
 
 // MCP Manager - handles direct MCP communication
 class MCPManager extends EventEmitter {
-  constructor() {
+  constructor(configData = null) {
     super();
     this.servers = new Map();
     this.nextId = 0;
+    this.config = configData || null; // Allow passing config directly
   }
 
   async initialize() {
     console.error('[MCP Manager] Initializing servers...');
 
-    for (const [serverName, serverConfig] of Object.entries(config.config.mcpServers)) {
+    // Use passed config or fall back to global config
+    const configToUse = this.config || config;
+    if (!configToUse || !configToUse.config || !configToUse.config.mcpServers) {
+      throw new Error('No configuration provided to MCPManager');
+    }
+
+    for (const [serverName, serverConfig] of Object.entries(configToUse.config.mcpServers)) {
       if (serverName === 'marvin') continue;
 
       try {
@@ -90,10 +102,13 @@ class MCPManager extends EventEmitter {
   async startServer(serverName, serverConfig) {
     console.error(`[MCP Manager] Starting ${serverName}...`);
 
+    // Use passed config or fall back to global config
+    const configToUse = this.config || config;
+
     // Resolve relative paths
     const resolvedArgs = serverConfig.args.map(arg => {
       if (arg.endsWith('.js') && !arg.startsWith('-') && !arg.startsWith('/')) {
-        const resolved = join(config.configDir, arg);
+        const resolved = join(configToUse.configDir, arg);
         return resolved;
       }
       return arg;
@@ -210,8 +225,10 @@ class MCPManager extends EventEmitter {
       params: { name: toolName, arguments: args }
     });
 
-    // Store call in history for cleanup
-    historyManager.recordMcpCall(serverName, toolName, args, result);
+    // Store call in history for cleanup (if historyManager exists)
+    if (typeof historyManager !== 'undefined') {
+      historyManager.recordMcpCall(serverName, toolName, args, result);
+    }
 
     const content = result.content;
     if (Array.isArray(content) && content[0]?.type === 'text') {
@@ -624,27 +641,23 @@ class MarvinMCPServer {
       const allTools = mcpManager.getAllTools();
       const tools = [];
 
-      // Add execute tool
+      // Add execute tool with ALL MCP tools available
+      const totalTools = Object.values(allTools).reduce((sum, tools) => sum + tools.length, 0);
+      const serverList = Object.keys(allTools).join(', ');
+
       tools.push({
         name: 'execute',
-        description: 'Execute code with automatic runtime detection',
+        description: `Execute JavaScript code with access to ALL ${totalTools} MCP tools from servers: ${serverList}. All tools available as async functions. Example: await builtInTools.Read({file_path: './file.txt'}), await playwright.browser_navigate({url: 'https://example.com'})`,
         inputSchema: {
           type: 'object',
           properties: {
             code: {
               type: 'string',
-              description: 'Code to execute'
+              description: 'JavaScript code to execute. All MCP tools available as async functions.'
             },
-            runtime: {
+            workingDirectory: {
               type: 'string',
-              enum: ['auto', 'nodejs', 'python', 'bash', 'go', 'rust', 'c', 'cpp'],
-              description: 'Runtime to use (auto detects from code)',
-              default: 'auto'
-            },
-            timeout: {
-              type: 'number',
-              description: 'Timeout in milliseconds (default: 240000)',
-              default: 240000
+              description: 'Working directory for execution'
             }
           },
           required: ['code']
@@ -719,56 +732,15 @@ class MarvinMCPServer {
   }
 
   async handleExecute(args) {
-    // Validate parameters according to the schema - let validation errors bubble up
-    if (!args || typeof args !== 'object') {
-      throw new Error('Invalid arguments: arguments must be an object');
-    }
+    // Use the new execute tool that provides access to ALL MCP tools
+    const executeTool = await createExecuteTool(mcpManager);
 
-    // Check for required 'code' parameter
-    if (args.code === undefined || args.code === null || typeof args.code !== 'string') {
-      throw new Error('Invalid arguments: "code" parameter is required and must be a string');
-    }
-
-    // Handle empty code as a special case - return error response but don't throw
-    if (args.code.trim() === '') {
-      return {
-        content: [{
-          type: 'text',
-          text: 'Execution failed: No code to execute'
-        }],
-        isError: true
-      };
-    }
-
-    // Check for allowed parameters
-    const allowedParams = ['code', 'runtime', 'timeout'];
-    const providedParams = Object.keys(args);
-    const invalidParams = providedParams.filter(param => !allowedParams.includes(param));
-
-    if (invalidParams.length > 0) {
-      throw new Error(`Invalid arguments: unknown parameter(s): ${invalidParams.join(', ')}`);
-    }
-
-    // Validate runtime if provided
-    if (args.runtime && !['auto', 'nodejs', 'python', 'bash', 'go', 'rust', 'c', 'cpp'].includes(args.runtime)) {
-      throw new Error(`Invalid arguments: "runtime" must be one of: auto, nodejs, python, bash, go, rust, c, cpp`);
-    }
-
-    // Validate timeout if provided
-    if (args.timeout && (typeof args.timeout !== 'number' || args.timeout <= 0)) {
-      throw new Error('Invalid arguments: "timeout" must be a positive number');
-    }
-
-    // Only catch execution errors, not validation errors
     try {
-      const result = await executionManager.execute(args);
-
+      const result = await executeTool.handler(args);
       return {
         content: [{
           type: 'text',
-          text: result.success
-            ? `Execution completed successfully:\n${result.result}`
-            : `Execution failed: ${result.error}`
+          text: result
         }]
       };
     } catch (error) {
@@ -929,4 +901,4 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   });
 }
 
-export { MarvinMCPServer, MCPManager, HistoryManager, ExecutionManager };
+export { MarvinMCPServer, MCPManager, HistoryManager, ExecutionManager, loadConfig };
