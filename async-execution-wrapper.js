@@ -20,21 +20,32 @@ class AsyncExecutionWrapper {
     const startTime = Date.now();
 
     try {
-      console.log('⏳ Planning execution (3s initial block)...');
-
-      // Initial 3-second planning block
-      await new Promise(resolve => setTimeout(resolve, 3000));
-
       console.log('🚀 Execution starting, will report progress every 60 seconds...');
 
-      // Start progress reporter
+      // Start progress reporter immediately
       const progressReporter = this.startProgressReporting(progressReportInterval);
 
-      // Execute the actual function asynchronously
-      this.currentExecution = executionFn();
+      // Execute the actual function and collect output for 3 seconds
+      const executionPromise = executionFn();
 
-      // Wait for execution to complete
-      const result = await this.currentExecution;
+      // Wait up to 3 seconds to see if execution completes quickly
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('BUFFER_TIMEOUT')), 3000);
+      });
+
+      let result;
+      try {
+        // Try to complete within 3 seconds for immediate output
+        result = await Promise.race([executionPromise, timeoutPromise]);
+      } catch (error) {
+        if (error.message === 'BUFFER_TIMEOUT') {
+          // Execution didn't complete in 3 seconds, wait for full completion
+          console.log('⏳ Execution continuing beyond initial buffer...');
+          result = await executionPromise;
+        } else {
+          throw error;
+        }
+      }
 
       // Stop progress reporting
       if (progressReporter) {
@@ -89,14 +100,9 @@ class AsyncExecutionWrapper {
 
   async executeWithProgressReport(executionFn, taskDescription) {
     console.log(`🎯 Starting task: ${taskDescription}`);
-    console.log('⏳ Initial 3-second planning phase...\n');
-
-    // 3-second initial block
-    await new Promise(resolve => setTimeout(resolve, 3000));
-
     console.log('⚙️  Executing task...');
 
-    // Start the async execution with progress reporting
+    // Start the async execution with progress reporting and 3s output buffer
     return this.executeWithAsyncBehavior(executionFn);
   }
 

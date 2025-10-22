@@ -21,7 +21,7 @@ if (!initialPrompt) {
   console.log('');
   console.log('Features:');
   console.log('  ✓ Persistent bash context - Commands maintain state across executions');
-  console.log('  ✓ 3-second planning phase - Initial analysis before execution');
+  console.log('  ✓ Immediate output collection - Fast tasks complete without delay');
   console.log('  ✓ 60-second progress reports - Regular updates on long-running processes');
   console.log('  ✓ Async process tracking - All servers and long-running tasks are tracked');
   console.log('  ✓ Automatic server detection - Servers run indefinitely with monitoring');
@@ -35,7 +35,7 @@ if (!initialPrompt) {
 async function startEnhancedMode(task) {
   console.log('🚀 Starting Alfred AI Assistant');
   console.log('📝 Task:', task);
-  console.log('🔄 Features: Persistent bash context, 3s planning, 60s progress reports\n');
+  console.log('🔄 Features: Persistent bash context, 60s progress reports, async tracking\n');
 
   const executor = new EnhancedExecutor();
 
