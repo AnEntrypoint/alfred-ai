@@ -45,13 +45,38 @@ const internalTools = {
   Bash: async ({ command, description, timeout = 120000 }) => {
     const { spawn } = await import('child_process');
     return new Promise((resolve, reject) => {
+      // For npm commands, ensure we use the correct working directory and ignore parent npm config
+      const env = { ...process.env };
+      if (command.includes('npm install')) {
+        // Override npm config to avoid engine-strict issues from parent project
+        env.npm_config_engine_strict = 'false';
+        env.npm_config_userconfig = '/dev/null'; // Ignore user npmrc
+        env.NODE_ENV = 'production'; // Avoid development dependencies that might cause issues
+
+        // Use npm install with --ignore-engines flag to bypass engine requirements
+        if (!command.includes('--ignore-engines')) {
+          command = command.replace('npm install', 'npm install --ignore-engines');
+        }
+      }
+
       const proc = spawn('bash', ['-c', command], {
         cwd: process.cwd(),
-        timeout
+        timeout,
+        env
       });
       let stdout = '', stderr = '';
-      proc.stdout.on('data', d => stdout += d);
-      proc.stderr.on('data', d => stderr += d);
+      proc.stdout.on('data', d => {
+        const chunk = d.toString();
+        stdout += chunk;
+        // Real-time console logging for bash stdout
+        process.stdout.write(chunk);
+      });
+      proc.stderr.on('data', d => {
+        const chunk = d.toString();
+        stderr += chunk;
+        // Real-time console logging for bash stderr
+        process.stderr.write(chunk);
+      });
       proc.on('close', code => resolve(`${stdout}${stderr}`));
       proc.on('error', reject);
     });
@@ -77,8 +102,9 @@ const internalTools = {
     const { writeFileSync } = await import('fs');
     writeFileSync(file_path, content, 'utf8');
     return 'OK';
-  }
-};
+  },
+
+  };
 
 // Extract external package imports from code
 function extractImports(code) {
@@ -89,12 +115,28 @@ function extractImports(code) {
   while ((match = importRegex.exec(code)) !== null) {
     const packageName = match[1];
     // Skip built-in Node.js modules and relative imports
-    if (!packageName.startsWith('.') && !packageName.startsWith('node:')) {
+    if (!packageName.startsWith('.') &&
+        !packageName.startsWith('node:') &&
+        !isBuiltInModule(packageName)) {
       imports.push(packageName);
     }
   }
 
   return [...new Set(imports)]; // Remove duplicates
+}
+
+// Check if a module is a built-in Node.js module
+function isBuiltInModule(moduleName) {
+  const builtInModules = [
+    'assert', 'async_hooks', 'buffer', 'child_process', 'cluster', 'console',
+    'constants', 'crypto', 'dgram', 'dns', 'domain', 'events', 'fs', 'http',
+    'https', 'inspector', 'module', 'net', 'os', 'path', 'perf_hooks',
+    'process', 'punycode', 'querystring', 'readline', 'repl', 'stream',
+    'string_decoder', 'sys', 'timers', 'tls', 'trace_events', 'tty',
+    'url', 'util', 'v8', 'vm', 'wasi', 'worker_threads', 'zlib',
+    'test', 'report', 'single-executable-application'
+  ];
+  return builtInModules.includes(moduleName);
 }
 
 // Install packages and return import wrapper code
@@ -132,8 +174,6 @@ async function preparePackages(imports, workingDirectory) {
         return `import axios from '${pkg}';`;
       } else if (pkg === 'lodash') {
         return `import _ from '${pkg}';\nimport * as lodash from '${pkg}';`;
-      } else if (pkg === 'fs' || pkg === 'path' || pkg === 'url' || pkg === 'util') {
-        return `import ${pkg} from 'node:${pkg}';`;
       } else {
         // Default import for other packages
         const importName = pkg.replace(/[^a-zA-Z0-9]/g, '');
@@ -182,8 +222,18 @@ ${code}
     });
 
     let stdout = '', stderr = '';
-    proc.stdout.on('data', d => { stdout += d; });
-    proc.stderr.on('data', d => { stderr += d; });
+    proc.stdout.on('data', d => {
+      const chunk = d.toString();
+      stdout += chunk;
+      // Real-time console logging for stdout
+      process.stdout.write(chunk);
+    });
+    proc.stderr.on('data', d => {
+      const chunk = d.toString();
+      stderr += chunk;
+      // Real-time console logging for stderr
+      process.stderr.write(chunk);
+    });
     proc.on('close', code => {
       if (code === 0) {
         resolve({ stdout, stderr, exitCode: 0 });
