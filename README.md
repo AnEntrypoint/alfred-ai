@@ -1,42 +1,39 @@
 # Alfred AI - Your Autonomous Coding Assistant
 
-**Alfred** is an intelligent, agentic CLI coding assistant that takes natural language instructions and autonomously executes them using code. Named after Batman's trusted butler, Alfred helps you get things done with minimal fuss and maximum reliability.
+**Alfred** is an intelligent, agentic CLI coding assistant powered by Claude Sonnet 4. It takes natural language instructions and autonomously writes and executes code to complete tasks, with Playwright MCP and Vexify MCP tools available in the execution environment.
 
 ## Key Features
 
-- **Agentic AI**: Takes natural language instructions and figures out how to complete them
-- **Multi-Provider LLM**: Uses Vercel AI SDK to support multiple LLM providers (starts with Anthropic Claude)
-- **Direct Tool Execution**: Built-in tools (Edit, Glob, Grep, Bash, LS, Read, Write) plus MCP tool integration
-- **Autonomous Operation**: Automatically installs dependencies, manages servers, handles errors
-- **Playwright Integration**: Built-in browser automation for testing and web interactions
-- **SDK-Free Architecture**: Clean, minimal dependencies
+- **🤖 Agentic Programming**: LLM writes code to accomplish tasks, no hardcoded logic
+- **🎭 Playwright MCP**: Browser automation tools available as functions in execution environment
+- **⚡ Vexify MCP**: Enhanced code execution and AST analysis tools
+- **🔧 Execute Tool**: Agent writes JavaScript/Bash code with MCP tool access
+- **🚀 Iterative Workflow**: Up to 10 iterations to complete complex tasks
+- **💻 Like Claude Code**: Similar agentic workflow but via execute tool
 
 ## Installation
 
 ```bash
-npm install -g alfred-ai
+npm install -g alfred-ai@5.0.0
 ```
 
 Or use directly with npx:
 
 ```bash
-npx alfred-ai "your task here"
+npx alfred-ai@latest "your task here"
 ```
 
 ## Quick Start
 
 ```bash
-# Set your authentication token
-export ANTHROPIC_AUTH_TOKEN=your-token-here
-
-# Optional: Set custom API endpoint
-export ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic
+# Set your Anthropic API key (required)
+export ANTHROPIC_API_KEY=your-api-key-here
 
 # Run Alfred with a task
-npx alfred "create an express server on port 3000"
+npx alfred-ai@latest "create an express server on port 3000"
 
-# Or more complex tasks
-npx alfred "create an express server, add a /api/hello endpoint, and test it with playwright"
+# Complex tasks with Playwright
+npx alfred-ai@latest "create an express server and test it in playwright mcp"
 ```
 
 ## Usage
