@@ -489,11 +489,10 @@ For multi-step operations, write all logic in a single execute() call.`;
     const messages = [{ role: 'user', content: userMessage }];
     let continueLoop = true;
     let iterationCount = 0;
-    const MAX_ITERATIONS = 20;
 
-    while (continueLoop && iterationCount < MAX_ITERATIONS) {
+    while (continueLoop) {
       iterationCount++;
-      console.log(`\n📝 Agent Iteration ${iterationCount}/${MAX_ITERATIONS}\n`);
+      console.log(`\n📝 Agent Iteration ${iterationCount}\n`);
 
       if (this.pendingAgentUpdates && this.pendingAgentUpdates.length > 0) {
         console.log(`\n🔔 Injecting ${this.pendingAgentUpdates.length} background process update(s) to agent...\n`);
@@ -520,6 +519,23 @@ For multi-step operations, write all logic in a single execute() call.`;
         const response = await this.anthropic.messages.create({
           model: 'claude-sonnet-4-20250514',
           max_tokens: 4096,
+          system: `You are Alfred, an AI coding assistant. Your goal is to fulfill the user's request by creating PERSISTENT FILES in the working directory.
+
+CRITICAL RULES:
+1. When asked to create a server, API, website, or application, you MUST write the code to FILES using bash commands (cat with heredoc, echo, etc.)
+2. DO NOT just run code in execute() without saving it to files - the user needs the files to persist after you're done
+3. ALWAYS create actual .js, .html, .css, etc. files in the working directory
+4. After creating files, you can test them by running execute(), but the files must exist first
+5. Use bash commands to write files: cat > filename.js <<'EOF' ... EOF
+6. The user's goal is to have working code files in their directory, not just temporary execution
+
+WORKFLOW:
+1. Understand the request
+2. Write code to FILES in the working directory
+3. Optionally test the files using execute()
+4. Confirm files are created with ls or similar commands
+
+Remember: Your success is measured by the FILES you create, not just code you run.`,
           tools,
           messages
         });
@@ -660,11 +676,6 @@ For multi-step operations, write all logic in a single execute() call.`;
           continueLoop = false;
         } else {
           console.log(`\n⚠️  Unexpected stop reason: ${response.stop_reason}\n`);
-          continueLoop = false;
-        }
-
-        if (iterationCount >= MAX_ITERATIONS) {
-          console.log(`\n⚠️  Reached maximum iterations (${MAX_ITERATIONS}). Ending workflow.\n`);
           continueLoop = false;
         }
 
