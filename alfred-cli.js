@@ -12,6 +12,8 @@ class AlfredMCPClient {
   }
 
   async startMCPServers() {
+    console.log('🚀 Starting MCP servers...');
+
     // Start Playwright MCP server
     this.playwrightProcess = spawn('npx', ['@playwright/mcp@latest'], {
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -43,6 +45,7 @@ class AlfredMCPClient {
 
     // Wait a moment for servers to initialize
     await new Promise(resolve => setTimeout(resolve, 2000));
+    console.log('✅ MCP servers ready');
   }
 
   async executeJS(code, options = {}) {
@@ -221,12 +224,18 @@ app.listen(port, () => {
 
   async run(args) {
     try {
-      await this.startMCPServers();
+      const command = args.length > 0 ? args.join(' ') : null;
 
-      if (args.length === 0) {
+      // Start MCP servers only if needed for interactive mode or specific commands
+      if (!command || command.includes('playwright') || command.includes('mcp') || command.includes('browser')) {
+        await this.startMCPServers();
+      } else {
+        console.log('⚡ Running in direct mode (no MCP servers)');
+      }
+
+      if (!command) {
         await this.startInteractiveMode();
       } else {
-        const command = args.join(' ');
         await this.processUserInput(command);
         this.cleanup();
       }
