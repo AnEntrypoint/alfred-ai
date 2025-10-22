@@ -30,13 +30,13 @@ proc.stdin.end();
 // Avoid: spawn('bash', ['-c', code]) - causes syntax errors
 ```
 
-#### Execution Model (3-Second Async)
-1. **Immediate Response (0-3 seconds)**:
+#### Execution Model (10-Second Async)
+1. **Immediate Response (0-10 seconds)**:
    - Code starts executing immediately
    - Quick outputs captured and returned synchronously
-   - After 3 seconds, execution continues in background
+   - After 10 seconds, execution continues in background
 
-2. **Async/Background Execution (>3 seconds)**:
+2. **Async/Background Execution (>10 seconds)**:
    - Long-running processes (servers, builds, tests) continue running
    - Process ID returned for tracking
    - Agent can make additional tool calls while process runs
@@ -60,7 +60,7 @@ proc.stdin.end();
 ### Comprehensive Tool Description
 The agent receives detailed documentation in the `execute` tool description:
 
-1. **Execution Model**: Clear explanation of 0-3s sync, >3s async behavior
+1. **Execution Model**: Clear explanation of 0-10s sync, >10s async behavior
 2. **Log Management**: 60s clearing cycle, eager queuing, zero repetition
 3. **Efficient Waiting**: Use `wait_for_logs` instead of sleep commands
 4. **Process Control**: When to use check/kill/wait tools
