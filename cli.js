@@ -171,7 +171,7 @@ function createMCPToolWrapper(toolName, serverName, servers) {
 };`;
 }
 
-async function callLLM({ baseURL, authToken, model, messages, system, maxTokens }) {
+async function callLLM({ baseURL, authToken, model, messages, system, maxTokens }, tokenTracker) {
   const url = baseURL
     ? `${baseURL}/v1/messages`
     : 'https://api.anthropic.com/v1/messages';
@@ -187,6 +187,11 @@ async function callLLM({ baseURL, authToken, model, messages, system, maxTokens 
     messages,
     system
   };
+
+  // Calculate and display input token count
+  const inputText = JSON.stringify({ system, messages });
+  const inputTokens = Math.ceil(inputText.length / 4); // Rough estimate: 1 token ≈ 4 characters
+  console.log(`📊 Input tokens: ~${inputTokens.toLocaleString()}`);
 
   const response = await fetch(url, {
     method: 'POST',
@@ -204,6 +209,23 @@ async function callLLM({ baseURL, authToken, model, messages, system, maxTokens 
   if (!result.content || !result.content[0]?.text) {
     throw new Error('Invalid response format from API');
   }
+
+  // Display output token count
+  const outputTokens = result.usage?.output_tokens || Math.ceil(result.content[0].text.length / 4);
+  const actualInputTokens = result.usage?.input_tokens || inputTokens;
+
+  console.log(`📊 Output tokens: ${outputTokens.toLocaleString()}`);
+
+  // Display total tokens if available
+  if (result.usage?.input_tokens) {
+    console.log(`📊 Actual input tokens: ${result.usage.input_tokens.toLocaleString()}`);
+  }
+
+  const callTotalTokens = actualInputTokens + outputTokens;
+  tokenTracker.totalTokensUsed += callTotalTokens;
+
+  console.log(`📊 Call total: ${callTotalTokens.toLocaleString()} tokens`);
+  console.log(`📊 Session total: ${tokenTracker.totalTokensUsed.toLocaleString()} tokens`);
 
   let code = result.content[0].text;
 
@@ -327,6 +349,46 @@ async function main() {
 
   const mcpServers = new Map();
 
+  console.log('⏳ Loading CLI tools...\n');
+
+  // Load additional tool documentation and hooks (like codemode)
+  let additionalTools = '';
+  let startMd = '';
+  let mcpThorns = '';
+  let wfgyHook = '';
+
+  try {
+    const { execSync } = await import('child_process');
+    console.log('   ├─ Fetching glootie-cc documentation...');
+    try {
+      startMd = execSync('curl -s https://raw.githubusercontent.com/AnEntrypoint/glootie-cc/refs/heads/master/start.md', { encoding: 'utf8', timeout: 5000 });
+      console.log('   ✓ glootie-cc documentation loaded');
+    } catch (error) {
+      console.log('   ⚠ Warning: Failed to fetch glootie-cc:', error.message);
+    }
+
+    console.log('   ├─ Loading mcp-thorns...');
+    try {
+      mcpThorns = execSync('npx -y mcp-thorns@latest', { encoding: 'utf8', timeout: 10000 });
+      console.log('   ✓ mcp-thorns loaded');
+    } catch (error) {
+      console.log('   ⚠ Warning: Failed to load mcp-thorns:', error.message);
+    }
+
+    console.log('   ├─ Loading wfgy hooks...');
+    try {
+      wfgyHook = execSync('npx -y wfgy@latest hook', { encoding: 'utf8', timeout: 10000 });
+      console.log('   ✓ wfgy hooks loaded');
+    } catch (error) {
+      console.log('   ⚠ Warning: Failed to load wfgy:', error.message);
+    }
+
+    additionalTools = `\n\n# Additional Tool Documentation\n\n${startMd}\n\n${wfgyHook}\n\n`;
+  } catch (error) {
+    console.log('   ⚠ Warning: Failed to load additional tools:', error.message);
+    additionalTools = '';
+  }
+
   console.log('⏳ Starting MCP servers...\n');
 
   // Start Playwright MCP server
@@ -360,7 +422,15 @@ AVAILABLE TOOLS (pre-imported and ready to use):
 ${vexify?.tools ? vexify.tools.map(t => `- ${t.name}`).join('\n') : ''}
 ${playwright.tools.map(t => `- ${t.name}`).join('\n')}
 
-CRITICAL: ALL TOOLS ARE ALREADY AVAILABLE AS FUNCTIONS - NO IMPORTS NEEDED!
+CRITICAL: ALL TOOLS ARE ALREADY AVAILABLE AS FUNCTIONS - NO IMPORTS NEEDED FOR TOOLS!
+For built-in Node.js modules in FILES: use import statements (import http from 'http')
+
+EXECUTION STRATEGY:
+- Break complex tasks into smaller, testable steps
+- Run multiple code executions to build incrementally
+- Test each step before proceeding to the next
+- Use console.log() to show progress between steps
+- Keep executing until the task is fully complete
 
 USER INTERRUPTIONS:
 - Additional prompts may arrive during execution as "[User interruption]: message"
@@ -382,30 +452,63 @@ await Bash({ command: 'npm install express' });
 REQUIREMENTS:
 1. NEVER use import statements directly in evaluation code - write them in files instead
 2. NEVER use require() - this is ES modules only
-3. NEVER use background processes (& operator) - they cause hanging
-4. Start directly with async/await code
-5. Use await for all tool calls
-6. Install dependencies with Bash({ command: 'npm install package-name' })
-7. For web servers: start with timeout, wait, then stop with pkill
-8. Always close browser with playwright_close()
-9. Use console.log() for progress
-10. Handle errors with try/catch
-11. Respond to user interruptions by adapting your approach
+3. For built-in Node.js modules: Write import statements in files (import http from 'http')
+4. For external packages (express, axios): Write import statements in files, not in evaluation code
+5. NEVER use background processes (& operator) - they cause hanging
+6. Start directly with async/await code
+7. Use await for all tool calls
+8. Install dependencies with Bash({ command: 'npm install package-name' })
+9. For web servers: start with timeout, wait, then stop with pkill
+10. Always close browser with playwright_close()
+11. Use console.log() for progress
+12. Handle errors with try/catch
+13. Run as many executions as needed to complete the task
+14. Test each step before building the next
 
-EXAMPLE:
+BASH EXECUTION CONTEXT:
+- You can execute bash commands alongside JavaScript code
+- Use Bash({ command: 'your command here' }) for shell operations
+- Bash context is useful for: npm operations, file system tasks, process management
+- JavaScript context is for: logic, file operations with tools, web requests
+- Choose the appropriate context for each task
+
+EXAMPLE (multi-step approach):
 async function main() {
   try {
+    // Step 1: Create basic server
     await Write({ file_path: 'server.js', content: \`import express from 'express';
 const app = express();
-app.listen(3000, () => console.log('Server running'));\` });
+app.get('/', (req, res) => res.send('Hello'));
+app.listen(3000);\` });
+    console.log('Server file created');
+
+    // Step 2: Install dependencies
     await Bash({ command: 'npm install express' });
-    await Bash({ command: 'timeout 5 node server.js' }); // Start with timeout
-    console.log('Server created successfully');
+    console.log('Dependencies installed');
+
+    // Step 3: Test server briefly
+    await Bash({ command: 'timeout 5 node server.js' });
+    console.log('Server tested successfully');
   } catch (error) {
     console.error('Error:', error);
   }
 }
 main();
+
+IMPORTANT CONTEXT AWARENESS:
+- You are likely continuing an existing project - analyze the current codebase first
+- Check for existing files, dependencies, and project structure using Read and Glob tools
+- Build upon what already exists rather than starting from scratch
+- Read existing configuration files (package.json, etc.) to understand the project
+- Consider the current working directory context in your decisions
+- Use Glob to find relevant files: Glob({ pattern: '**/*.js' }) or Glob({ pattern: 'package.json' })
+
+SUCCESS DETECTION:
+- Stop when you see clear indicators: Task completed, successfully created/deployed/tested, done, finished
+- If no success indicators, continue with next iteration
+- Maximum 10 iterations - stop if task incomplete
+
+${additionalTools}
 
 Return ONLY executable JavaScript code, no explanations.`;
 
@@ -414,10 +517,25 @@ Return ONLY executable JavaScript code, no explanations.`;
   let conversationHistory = [
     { role: 'user', content: initialPrompt }
   ];
+  let executionHistory = []; // Track code executions and their outputs
+  const tokenTracker = { totalTokensUsed: 0 }; // Track cumulative token usage
 
   while (iteration < maxIterations) {
     iteration++;
     console.log(`\n🔄 Iteration ${iteration}/${maxIterations}\n`);
+
+    // Clean up old execution outputs (remove outputs older than 5 executions)
+    executionHistory = executionHistory.filter(exec => iteration - exec.iteration <= 5);
+
+    // Clean up old conversation inputs (remove inputs older than 2 executions)
+    const userMessages = conversationHistory.filter(m => m.role === 'user');
+    conversationHistory = conversationHistory.filter(msg => {
+      if (msg.role === 'user') {
+        const userMsgIndex = userMessages.indexOf(msg);
+        return userMsgIndex === -1 || userMsgIndex >= userMessages.length - 2;
+      }
+      return true; // Keep all non-user messages
+    });
 
     // Check for pending interruptions and add them to conversation
     if (pendingInterruptions.length > 0) {
@@ -443,13 +561,23 @@ Return ONLY executable JavaScript code, no explanations.`;
         messages: conversationHistory,
         system: systemPrompt,
         maxTokens: 4096
-      });
+      }, tokenTracker);
 
       const code = result;
       console.log(`💭 Alfred's plan:\n${code}\n`);
       console.log(`⚙️  Executing...\n`);
 
       const execResult = await execute({ code, mcpWrappers, workingDirectory: process.cwd() });
+
+      // Track this execution
+      executionHistory.push({
+        iteration,
+        code,
+        stdout: execResult.stdout,
+        stderr: execResult.stderr,
+        exitCode: execResult.exitCode,
+        timestamp: Date.now()
+      });
 
       console.log(`📤 OUTPUT:\n${execResult.stdout}`);
       if (execResult.stderr) {
@@ -467,10 +595,13 @@ Return ONLY executable JavaScript code, no explanations.`;
         break;
       }
 
-      conversationHistory.push(
-        { role: 'assistant', content: code },
-        { role: 'user', content: `Execution result:\nstdout: ${execResult.stdout}\nstderr: ${execResult.stderr}\nexit code: ${execResult.exitCode}\n\nContinue with next step or fix any errors.` }
-      );
+      // Only add to conversation history if it contains meaningful output (not just empty or trivial)
+      if (execResult.stdout.trim().length > 50 || execResult.stderr.trim().length > 0 || execResult.exitCode !== 0) {
+        conversationHistory.push(
+          { role: 'assistant', content: code },
+          { role: 'user', content: `Execution result (iteration ${iteration}):\nstdout: ${execResult.stdout}\nstderr: ${execResult.stderr}\nexit code: ${execResult.exitCode}\n\nContinue with next step or fix any errors.` }
+        );
+      }
 
     } catch (error) {
       console.error(`\n❌ Error in iteration ${iteration}:`, error.message);
@@ -486,7 +617,14 @@ Return ONLY executable JavaScript code, no explanations.`;
 
   if (iteration >= maxIterations) {
     console.log(`\n⚠️  Reached maximum iterations (${maxIterations}). Task may be incomplete.`);
-    process.exit(1);
+  }
+
+  // Display final token usage summary
+  console.log(`\n📊 Final token usage summary:`);
+  console.log(`   Total tokens used: ${tokenTracker.totalTokensUsed.toLocaleString()}`);
+  console.log(`   Total API calls: ${iteration}`);
+  if (iteration > 0) {
+    console.log(`   Average tokens per call: ${Math.round(tokenTracker.totalTokensUsed / iteration).toLocaleString()}`);
   }
 
   process.exit(0);
