@@ -1,6 +1,6 @@
 {
   "name": "alfred-ai",
-  "version": "4.16.0",
+  "version": "5.0.0",
   "type": "module",
   "description": "Alfred - Autonomous agentic CLI coding assistant. Takes natural language instructions and executes them using LLM + tools.",
   "main": "alfred-cli.js",
@@ -22,6 +22,7 @@
   "author": "Alfred AI",
   "license": "MIT",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.67.0",
     "express": "^5.1.0",
     "fast-glob": "^3.3.2",
     "playwright": "^1.56.1"
