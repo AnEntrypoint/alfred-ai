@@ -4,10 +4,12 @@ import Anthropic from '@anthropic-ai/sdk';
 import { spawn } from 'child_process';
 import { createInterface } from 'readline';
 import { stdout, stderr } from 'process';
+import AuthenticationManager from './auth-manager.js';
 
 class AlfredMCPClient {
   constructor() {
     this.anthropic = null;
+    this.authManager = new AuthenticationManager();
     this.playwrightClient = null;
     this.vexifyClient = null;
     this.availableTools = new Map();
@@ -132,13 +134,14 @@ class AlfredMCPClient {
   }
 
   async initializeAnthropic() {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      throw new Error('ANTHROPIC_API_KEY environment variable is required');
+    try {
+      const apiKey = await this.authManager.getAuthentication();
+      this.anthropic = new Anthropic({ apiKey });
+      console.log('✅ Anthropic client initialized');
+    } catch (error) {
+      console.error('❌ Authentication failed:', error.message);
+      throw error;
     }
-
-    this.anthropic = new Anthropic({ apiKey });
-    console.log('✅ Anthropic client initialized');
   }
 
   buildExecuteToolDescription() {
@@ -412,16 +415,21 @@ Usage:
   alfred                    Start interactive mode
   alfred <request>         Process single request
   alfred --help           Show this help
+  alfred --logout          Clear stored authentication
+  alfred --version        Show version
 
 Features:
   🎭 Playwright MCP tools available in execution environment
   ⚡ Vexify MCP tools available in execution environment
   🔧 LLM-driven code generation and execution
   🚀 Agentic workflow like Claude Code
+  🔐 Browser-based authentication with secure token storage
   📦 No hardcoded functionality - agent writes all code
 
-Environment Variables:
-  ANTHROPIC_API_KEY       Required for LLM functionality
+Authentication:
+  🔑 Browser-based authentication (recommended)
+  🌍 Environment variables: ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN
+  💾 Secure local token storage in ~/.alfred/
 
 Examples:
   alfred "create an express server and test it in playwright"
@@ -438,6 +446,12 @@ MCP Tools Available in Execute Environment:
 if (args.includes('--version') || args.includes('-v')) {
   const packageJson = await import('fs').then(fs => fs.promises.readFile('package.json', 'utf8').then(JSON.parse));
   console.log(`Alfred v${packageJson.version}`);
+  process.exit(0);
+}
+
+if (args.includes('--logout')) {
+  const authManager = new AuthenticationManager();
+  await authManager.logout();
   process.exit(0);
 }
 
