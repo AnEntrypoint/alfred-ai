@@ -83,6 +83,22 @@ class EnhancedExecutor {
         enhancedCommand = command.replace('ls ', 'ls --ignore=node_modules --ignore=.git --ignore=dist --ignore=build --ignore=coverage ');
       }
 
+      // No timeout restrictions - let servers run indefinitely
+      // Keep server detection for logging purposes but don't apply timeouts
+      const isServerCommand =
+        command.includes('node server') ||
+        command.includes('npm start') ||
+        command.includes('app.listen') ||
+        command.includes('listen(') ||
+        command.includes('server.js');
+
+      let processId = null;
+      if (isServerCommand) {
+        console.log(`🔧 Detected server command, running indefinitely`);
+        // Register with async wrapper for tracking
+        processId = this.asyncWrapper.registerAsyncProcess(`Bash: ${command}`);
+      }
+
       // Create a new bash process for each command in non-interactive mode
       // This maintains environment state but avoids complex parsing
       const bashProcess = spawn('bash', ['--noprofile', '--norc', '-c', enhancedCommand], {
@@ -95,19 +111,39 @@ class EnhancedExecutor {
         }
       });
 
+      // Register process reference if it's a server
+      if (processId) {
+        this.asyncWrapper.activeProcesses.get(processId).processRef = bashProcess;
+      }
+
       bashProcess.stdout.on('data', (data) => {
         const chunk = data.toString();
         stdout += chunk;
         process.stdout.write(chunk);
+
+        // Log to async process tracker if it's a server
+        if (processId) {
+          this.asyncWrapper.addProcessLog(processId, chunk.trim());
+        }
       });
 
       bashProcess.stderr.on('data', (data) => {
         const chunk = data.toString();
         stderr += chunk;
         process.stderr.write(chunk);
+
+        // Log errors to async process tracker if it's a server
+        if (processId) {
+          this.asyncWrapper.addProcessLog(processId, `ERROR: ${chunk.trim()}`);
+        }
       });
 
       bashProcess.on('close', (code) => {
+        // Unregister process when it completes
+        if (processId) {
+          this.asyncWrapper.unregisterAsyncProcess(processId);
+        }
+
         resolve({
           stdout: stdout.trim(),
           stderr: stderr.trim(),
@@ -116,20 +152,14 @@ class EnhancedExecutor {
       });
 
       bashProcess.on('error', (error) => {
+        // Unregister process on error
+        if (processId) {
+          this.asyncWrapper.unregisterAsyncProcess(processId);
+        }
         reject(error);
       });
 
-      // Timeout after 30 seconds
-      setTimeout(() => {
-        if (!bashProcess.killed) {
-          bashProcess.kill();
-          resolve({
-            stdout: stdout,
-            stderr: 'Command timeout after 30s',
-            exitCode: 1
-          });
-        }
-      }, 30000);
+      // No timeout - let servers run indefinitely
     });
   }
 
@@ -258,11 +288,30 @@ const LS = async ({ path = process.cwd() }) => {
   }
 })();`;
 
+      // Detect if this might be server code for logging only
+      const isServerCode =
+        code.includes('app.listen') ||
+        code.includes('listen(') ||
+        code.includes('createServer') ||
+        code.includes('server.js');
+
+      let processId = null;
+      if (isServerCode) {
+        console.log(`🔧 Detected server code, will run indefinitely`);
+        // Register with async wrapper for tracking
+        processId = this.asyncWrapper.registerAsyncProcess(`JavaScript: server execution`);
+      }
+
       const result = await new Promise((resolve, reject) => {
         const proc = spawn('node', ['--input-type=module', '--eval', wrappedCode], {
           cwd: this.workingDirectory,
           stdio: ['pipe', 'pipe', 'pipe']
         });
+
+        // Register process reference if it's a server
+        if (processId) {
+          this.asyncWrapper.activeProcesses.get(processId).processRef = proc;
+        }
 
         let stdout = '';
         let stderr = '';
@@ -271,21 +320,41 @@ const LS = async ({ path = process.cwd() }) => {
           const chunk = data.toString();
           stdout += chunk;
           process.stdout.write(chunk);
+
+          // Log to async process tracker if it's a server
+          if (processId) {
+            this.asyncWrapper.addProcessLog(processId, chunk.trim());
+          }
         });
 
         proc.stderr.on('data', (data) => {
           const chunk = data.toString();
           stderr += chunk;
           process.stderr.write(chunk);
+
+          // Log errors to async process tracker if it's a server
+          if (processId) {
+            this.asyncWrapper.addProcessLog(processId, `ERROR: ${chunk.trim()}`);
+          }
         });
 
         proc.on('close', (code) => {
+          // Unregister process when it completes
+          if (processId) {
+            this.asyncWrapper.unregisterAsyncProcess(processId);
+          }
           resolve({ stdout: stdout.trim(), stderr: stderr.trim(), exitCode: code });
         });
 
         proc.on('error', (error) => {
+          // Unregister process on error
+          if (processId) {
+            this.asyncWrapper.unregisterAsyncProcess(processId);
+          }
           reject(error);
         });
+
+        // No timeout - let servers run indefinitely
       });
 
       return result;
