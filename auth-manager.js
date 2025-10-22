@@ -11,6 +11,27 @@ class AuthenticationManager {
   constructor() {
     this.tokenFile = join(homedir(), '.alfred', 'auth-token.json');
     this.configDir = join(homedir(), '.alfred');
+
+    // Potential Claude Code token locations
+    this.claudeCodeLocations = [
+      // macOS
+      join(homedir(), 'Library', 'Application Support', 'Claude', 'auth.json'),
+      join(homedir(), 'Library', 'Application Support', 'Claude', 'session.json'),
+      join(homedir(), 'Library', 'Preferences', 'claude_desktop.json'),
+
+      // Linux
+      join(homedir(), '.config', 'Claude', 'auth.json'),
+      join(homedir(), '.config', 'Claude', 'session.json'),
+      join(homedir(), '.local', 'share', 'Claude', 'auth.json'),
+
+      // Windows
+      join(homedir(), 'AppData', 'Roaming', 'Claude', 'auth.json'),
+      join(homedir(), 'AppData', 'Local', 'Claude', 'auth.json'),
+
+      // Cross-platform cache locations
+      join(homedir(), '.cache', 'claude', 'auth.json'),
+      join(homedir(), '.cache', 'claude', 'session.json'),
+    ];
   }
 
   async ensureConfigDir() {
@@ -36,6 +57,59 @@ class AuthenticationManager {
     } catch (error) {
       return null;
     }
+  }
+
+  async getClaudeCodeToken() {
+    console.log('🔍 Checking for Claude Code authentication...');
+
+    // Check for Claude Code environment variables first
+    if (process.env.CLAUDE_API_KEY) {
+      console.log('✅ Found CLAUDE_API_KEY environment variable');
+      return process.env.CLAUDE_API_KEY;
+    }
+
+    // Check for Claude Code session tokens in common locations
+    for (const location of this.claudeCodeLocations) {
+      try {
+        const data = await fs.readFile(location, 'utf8');
+        const parsed = JSON.parse(data);
+
+        // Look for various token fields in different formats
+        const token = parsed.token || parsed.api_key || parsed.accessToken || parsed.access_token ||
+                     parsed.sessionToken || parsed.session_token || parsed.authToken || parsed.auth_token;
+
+        if (token && typeof token === 'string' && token.length > 10) {
+          console.log(`✅ Found Claude Code token in ${location}`);
+
+          // Validate token format (Claude tokens typically start with sk-ant-)
+          if (token.startsWith('sk-ant-')) {
+            return token;
+          } else {
+            console.log(`⚠️  Found token but format may be incorrect: ${token.substring(0, 10)}...`);
+          }
+        }
+      } catch (error) {
+        // File doesn't exist or can't be read, continue to next location
+      }
+    }
+
+    // Check for Claude Code specific environment variables
+    const claudeEnvVars = [
+      'CLAUDE_DESKTOP_API_KEY',
+      'CLAUDE_SESSION_TOKEN',
+      'CLAUDE_OAUTH_TOKEN',
+      'CLAUDE_DESKTOP_SESSION'
+    ];
+
+    for (const envVar of claudeEnvVars) {
+      if (process.env[envVar]) {
+        console.log(`✅ Found ${envVar} environment variable`);
+        return process.env[envVar];
+      }
+    }
+
+    console.log('❌ No Claude Code authentication found');
+    return null;
   }
 
   async storeToken(token, expiresIn = null) {
@@ -114,7 +188,16 @@ When you have your API key, press Enter to continue, or type 'skip' to use API k
   }
 
   async getAuthentication() {
-    // Try stored token first
+    // Try Claude Code OAuth token first (highest priority)
+    const claudeCodeToken = await this.getClaudeCodeToken();
+    if (claudeCodeToken) {
+      console.log('🎭 Using Claude Code authentication token');
+      // Store Claude Code token for future use
+      await this.storeToken(claudeCodeToken, 365 * 24 * 60 * 60 * 1000); // 1 year
+      return claudeCodeToken;
+    }
+
+    // Try stored token second
     const storedToken = await this.getStoredToken();
     if (storedToken) {
       console.log('🔑 Using stored authentication token');
