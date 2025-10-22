@@ -247,11 +247,10 @@ Use them naturally in your code like: await browser_navigate({url: 'https://exam
     const messages = [{ role: 'user', content: userMessage }];
     let continueLoop = true;
     let iterationCount = 0;
-    const maxIterations = 10;
 
-    while (continueLoop && iterationCount < maxIterations) {
+    while (continueLoop) {
       iterationCount++;
-      console.log(`\n📝 Agent Iteration ${iterationCount}/${maxIterations}\n`);
+      console.log(`\n📝 Agent Iteration ${iterationCount}\n`);
 
       try {
         const response = await this.anthropic.messages.create({
@@ -323,10 +322,6 @@ Use them naturally in your code like: await browser_navigate({url: 'https://exam
         console.error(`\n❌ Agent error: ${error.message}\n`);
         continueLoop = false;
       }
-    }
-
-    if (iterationCount >= maxIterations) {
-      console.log(`\n⚠️  Reached maximum iteration limit (${maxIterations})\n`);
     }
 
     console.log('\n✅ Agent workflow complete\n');
