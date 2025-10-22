@@ -80,13 +80,91 @@ const internalTools = {
   }
 };
 
+// Extract external package imports from code
+function extractImports(code) {
+  const imports = [];
+  const importRegex = /import\s+(?:(?:\{[^}]+\}|\*\s+as\s+\w+|\w+)\s+from\s+)?['"]([^'"]+)['"]/g;
+  let match;
+
+  while ((match = importRegex.exec(code)) !== null) {
+    const packageName = match[1];
+    // Skip built-in Node.js modules and relative imports
+    if (!packageName.startsWith('.') && !packageName.startsWith('node:')) {
+      imports.push(packageName);
+    }
+  }
+
+  return [...new Set(imports)]; // Remove duplicates
+}
+
+// Install packages and return import wrapper code
+async function preparePackages(imports, workingDirectory) {
+  if (imports.length === 0) return '';
+
+  const { spawn } = await import('child_process');
+  const { promisify } = await import('util');
+
+  try {
+    // Install packages in working directory
+    const installProcess = spawn('npm', ['install', ...imports], {
+      cwd: workingDirectory,
+      stdio: 'pipe'
+    });
+
+    let stdout = '', stderr = '';
+    installProcess.stdout.on('data', (data) => stdout += data);
+    installProcess.stderr.on('data', (data) => stderr += data);
+
+    await new Promise((resolve, reject) => {
+      installProcess.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`npm install failed with code ${code}. stderr: ${stderr}`));
+      });
+      installProcess.on('error', reject);
+    });
+
+    // Create import wrapper code
+    const importStatements = imports.map(pkg => {
+      // Handle common packages with their specific import patterns
+      if (pkg === 'express') {
+        return `import express from '${pkg}';`;
+      } else if (pkg === 'axios') {
+        return `import axios from '${pkg}';`;
+      } else if (pkg === 'lodash') {
+        return `import _ from '${pkg}';\nimport * as lodash from '${pkg}';`;
+      } else if (pkg === 'fs' || pkg === 'path' || pkg === 'url' || pkg === 'util') {
+        return `import ${pkg} from 'node:${pkg}';`;
+      } else {
+        // Default import for other packages
+        const importName = pkg.replace(/[^a-zA-Z0-9]/g, '');
+        return `import ${importName} from '${pkg}';`;
+      }
+    }).join('\n');
+
+    return importStatements;
+
+  } catch (error) {
+    console.warn(`Failed to install packages ${imports.join(', ')}: ${error.message}`);
+    return '';
+  }
+}
+
 // The ONE tool exposed: execute
 async function execute({ code, mcpWrappers = '', workingDirectory = process.cwd() }) {
+  // Extract external imports from the code
+  const externalImports = extractImports(code);
+
+  // Install external packages and get import statements
+  const importStatements = await preparePackages(externalImports, workingDirectory);
+
   const wrappedCode = `
 // Built-in tools available in execution context
 ${Object.entries(internalTools).map(([name, fn]) =>
   `const ${name} = ${fn.toString()};`
 ).join('\n')}
+
+// External package imports
+${importStatements}
 
 // MCP tool wrappers
 ${mcpWrappers}
