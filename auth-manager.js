@@ -188,23 +188,7 @@ When you have your API key, press Enter to continue, or type 'skip' to use API k
   }
 
   async getAuthentication() {
-    // Try Claude Code OAuth token first (highest priority)
-    const claudeCodeToken = await this.getClaudeCodeToken();
-    if (claudeCodeToken) {
-      console.log('🎭 Using Claude Code authentication token');
-      // Store Claude Code token for future use
-      await this.storeToken(claudeCodeToken, 365 * 24 * 60 * 60 * 1000); // 1 year
-      return claudeCodeToken;
-    }
-
-    // Try stored token second
-    const storedToken = await this.getStoredToken();
-    if (storedToken) {
-      console.log('🔑 Using stored authentication token');
-      return storedToken;
-    }
-
-    // Try environment variable
+    // Try environment variable first (highest priority - allows override)
     const envToken = process.env.ANTHROPIC_API_KEY;
     if (envToken) {
       console.log('🌍 Using ANTHROPIC_API_KEY environment variable');
@@ -216,6 +200,22 @@ When you have your API key, press Enter to continue, or type 'skip' to use API k
     if (legacyToken) {
       console.log('🌍 Using ANTHROPIC_AUTH_TOKEN environment variable');
       return legacyToken;
+    }
+
+    // Try Claude Code OAuth token (auto-detect from logged-in Claude Code)
+    // This provides best UX - no setup needed if Claude Code is installed
+    const claudeCodeToken = await this.getClaudeCodeToken();
+    if (claudeCodeToken) {
+      console.log('🎭 Using Claude Code authentication token');
+      return claudeCodeToken;
+    }
+
+    // Try stored token (cached from previous browser auth)
+    // Note: Stored tokens are NOT saved from Claude Code detection
+    const storedToken = await this.getStoredToken();
+    if (storedToken) {
+      console.log('🔑 Using stored authentication token');
+      return storedToken;
     }
 
     // Prompt for browser authentication
