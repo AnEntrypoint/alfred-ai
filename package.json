@@ -1,6 +1,6 @@
 {
   "name": "alfred-ai",
-  "version": "5.3.2",
+  "version": "5.4.0",
   "type": "module",
   "description": "Alfred - Autonomous agentic CLI coding assistant. Takes natural language instructions and executes them using LLM + tools.",
   "main": "alfred-cli.js",
@@ -8,6 +8,7 @@
     "alfred": "./alfred-cli.js"
   },
   "scripts": {
+    "test": "node -e \"const { AuthenticationManager } = require('./auth-manager.js'); const auth = new AuthenticationManager(); auth.getAuthentication().then(token => { console.log('SUCCESS: Token found:', token?.substring(0, 50)); }).catch(err => { console.log('ERROR:', err.message); });\"",
     "start": "node alfred-cli.js",
     "test:gpu": "source /etc/profile.d/gpu-acceleration.sh && playwright test",
     "playwright:gpu": "source /etc/profile.d/gpu-acceleration.sh && playwright"

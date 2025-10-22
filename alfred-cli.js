@@ -168,12 +168,12 @@ class AlfredMCPClient {
 
 🔄 EXECUTION MODEL - READ THIS CAREFULLY:
 
-1. IMMEDIATE RESPONSE (0-3 seconds):
+1. IMMEDIATE RESPONSE (0-10 seconds):
    - Code starts executing immediately
-   - Quick outputs (console.log, errors, etc.) are captured for 3 seconds
-   - After 3 seconds, execution continues in BACKGROUND
+   - Quick outputs (console.log, errors, etc.) are captured for 10 seconds
+   - After 10 seconds, execution continues in BACKGROUND
 
-2. ASYNC/BACKGROUND EXECUTION (after 3 seconds):
+2. ASYNC/BACKGROUND EXECUTION (after 10 seconds):
    - Long-running processes (servers, builds, tests) continue running
    - You receive a process ID to track them
    - You can continue making other tool calls immediately
@@ -198,7 +198,7 @@ class AlfredMCPClient {
    - wait_for_logs: Efficiently wait for log updates (60s)
 
 🎯 WORKFLOW EXAMPLE:
-   1. execute() creates Express server → goes to background after 3s
+   1. execute() creates Express server → goes to background after 10s
    2. wait_for_logs to efficiently wait for startup logs
    3. execute() tests the server with Playwright
    4. kill_process to stop server and get final logs
@@ -248,7 +248,7 @@ For multi-step operations, write all logic in a single execute() call.`;
 
     console.log(`\n⚡ [${processId}] Starting ${runtime} execution...`);
     console.log(`📂 Working Directory: ${process.cwd()}`);
-    console.log(`⏱️  Execution Model: Immediate (0-3s) → Background (if needed)\n`);
+    console.log(`⏱️  Execution Model: Immediate (0-10s) → Background (if needed)\n`);
 
     return new Promise((resolve) => {
       let childProcess;
@@ -322,7 +322,7 @@ For multi-step operations, write all logic in a single execute() call.`;
             exitCode: null
           });
         }
-      }, 3000);
+      }, 10000);
 
       childProcess.on('close', (code) => {
         clearTimeout(timer);
@@ -781,8 +781,8 @@ Features:
 
 Execution Model:
   • Code executes immediately in working directory
-  • Quick operations (<3s): Complete synchronously
-  • Long operations (>3s): Continue in background, output streams
+  • Quick operations (<10s): Complete synchronously
+  • Long operations (>10s): Continue in background, output streams
   • Agent stays informed via console output
   • Can make additional calls while processes run
 
