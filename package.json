@@ -1,11 +1,11 @@
 {
   "name": "alfred-ai",
-  "version": "4.12.0",
+  "version": "4.13.0",
   "type": "module",
   "description": "Alfred - Autonomous agentic CLI coding assistant. Takes natural language instructions and executes them using LLM + tools.",
-  "main": "alfred-entry.js",
+  "main": "alfred-cli.js",
   "bin": {
-    "alfred": "./alfred-entry.js"
+    "alfred": "./alfred-cli.js"
   },
   "scripts": {
     "start": "node alfred-cli.js",
