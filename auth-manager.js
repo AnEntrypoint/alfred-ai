@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { spawn } from 'child_process';
 import { createInterface } from 'readline';
 import { promises as fs } from 'fs';
 import { join } from 'path';
@@ -10,6 +11,27 @@ class AuthenticationManager {
   constructor() {
     this.tokenFile = join(homedir(), '.alfred', 'auth-token.json');
     this.configDir = join(homedir(), '.alfred');
+
+    // Potential Claude Code token locations
+    this.claudeCodeLocations = [
+      // macOS
+      join(homedir(), 'Library', 'Application Support', 'Claude', 'auth.json'),
+      join(homedir(), 'Library', 'Application Support', 'Claude', 'session.json'),
+      join(homedir(), 'Library', 'Preferences', 'claude_desktop.json'),
+
+      // Linux
+      join(homedir(), '.config', 'Claude', 'auth.json'),
+      join(homedir(), '.config', 'Claude', 'session.json'),
+      join(homedir(), '.local', 'share', 'Claude', 'auth.json'),
+
+      // Windows
+      join(homedir(), 'AppData', 'Roaming', 'Claude', 'auth.json'),
+      join(homedir(), 'AppData', 'Local', 'Claude', 'auth.json'),
+
+      // Cross-platform cache locations
+      join(homedir(), '.cache', 'claude', 'auth.json'),
+      join(homedir(), '.cache', 'claude', 'session.json'),
+    ];
   }
 
   async ensureConfigDir() {
@@ -20,15 +42,33 @@ class AuthenticationManager {
     }
   }
 
-  async getAuthentication() {
-    // Try environment variables (API keys for override)
-    const envToken = process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN;
-    if (envToken) {
-      console.log('🌍 Using ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN environment variable');
-      return envToken;
+  async getStoredToken() {
+    try {
+      await this.ensureConfigDir();
+      const tokenData = await fs.readFile(this.tokenFile, 'utf8');
+      const { token, expires } = JSON.parse(tokenData);
+
+      if (expires && Date.now() > expires) {
+        await this.clearStoredToken();
+        return null;
+      }
+
+      return token;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  async getClaudeCodeToken() {
+    console.log('🔍 Checking for Claude Code authentication...');
+
+    // Check for Claude Code environment variables first
+    if (process.env.CLAUDE_API_KEY) {
+      console.log('✅ Found CLAUDE_API_KEY environment variable');
+      return process.env.CLAUDE_API_KEY;
     }
 
-    // Try Claude Code session tokens in common locations
+    // Check for Claude Code session tokens in common locations
     for (const location of this.claudeCodeLocations) {
       try {
         const data = await fs.readFile(location, 'utf8');
@@ -53,51 +93,23 @@ class AuthenticationManager {
       }
     }
 
+    // Check for Claude Code specific environment variables
+    const claudeEnvVars = [
+      'CLAUDE_DESKTOP_API_KEY',
+      'CLAUDE_SESSION_TOKEN',
+      'CLAUDE_OAUTH_TOKEN',
+      'CLAUDE_DESKTOP_SESSION'
+    ];
+
+    for (const envVar of claudeEnvVars) {
+      if (process.env[envVar]) {
+        console.log(`✅ Found ${envVar} environment variable`);
+        return process.env[envVar];
+      }
+    }
+
     console.log('❌ No Claude Code authentication found');
-
-    // Prompt for browser authentication (fallback)
-    console.log('🌐 Opening browser for authentication...\n');
-    const authInstructions = `
-🔐 Alfred Authentication
-
-Since Claude uses API key authentication, please follow these steps:
-
-1. Open https://console.claude.com in your browser
-2. Sign in to your Claude account
-3. Go to Account Settings → API Keys
-4. Generate a new API key
-5. Copy the API key
-
-When you have your API key, you can:
-- Set environment variable: export ANTHROPIC_API_KEY=your_key_here
-- Or set environment variable: export ANTHROPIC_AUTH_TOKEN=your_key_here
-
-To skip browser authentication, press Enter without pasting a key.
-`;
-
-    return new Promise((resolve, reject) => {
-      const rl = createInterface({
-        input: process.stdin,
-        output: process.stdout
-      });
-
-      console.log(authInstructions);
-      rl.question('\n🔗 Paste your Claude API key (or press Enter to skip): ', (input) => {
-        const key = input.trim();
-
-        if (key) {
-          console.log('\n🔑 Using provided API key');
-          resolve(key);
-        } else {
-          console.log('\n❌ No API key provided');
-          console.log('\n📋 To use Alfred, please set ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN environment variable');
-          console.log('\n📋 Get your API key from: https://console.claude.com');
-          reject(new Error('No API key provided'));
-        }
-      }).on('close', () => {
-        rl.close();
-      });
-    });
+    return null;
   }
 
   async storeToken(token, expiresIn = null) {
@@ -118,6 +130,53 @@ To skip browser authentication, press Enter without pasting a key.
     } catch (error) {
       // File might not exist
     }
+  }
+
+  
+  async getAuthentication() {
+    // Try environment variable first (highest priority - allows override)
+    const envToken = process.env.ANTHROPIC_API_KEY;
+    if (envToken) {
+      console.log('🌍 Using ANTHROPIC_API_KEY environment variable');
+      return envToken;
+    }
+
+    // Try legacy environment variable
+    const legacyToken = process.env.ANTHROPIC_AUTH_TOKEN;
+    if (legacyToken) {
+      console.log('🌍 Using ANTHROPIC_AUTH_TOKEN environment variable');
+      return legacyToken;
+    }
+
+    
+    // Try Claude Code session tokens in common locations (original detection)
+    const claudeCodeToken = await this.getClaudeCodeToken();
+    if (claudeCodeToken) {
+      console.log('🎭 Using Claude Code authentication token');
+      return claudeCodeToken;
+    }
+
+    // Try stored token (cached from previous browser auth)
+    // Note: Stored tokens are NOT saved from Claude Code detection
+    const storedToken = await this.getStoredToken();
+    if (storedToken) {
+      console.log('🔑 Using stored authentication token');
+      return storedToken;
+    }
+
+    // No authentication found
+    console.log('❌ No authentication found');
+
+    throw new Error(`
+❌ Authentication required!
+
+Please set one of the following:
+  1. Run: export ANTHROPIC_API_KEY=your_api_key_here
+  2. Run: export ANTHROPIC_AUTH_TOKEN=your_api_key_here
+  3. Use browser authentication when prompted
+
+Get your API key from: https://console.claude.com
+    `);
   }
 
   async logout() {
