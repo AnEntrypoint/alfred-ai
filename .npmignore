@@ -1,0 +1,24 @@
+# Development and testing files
+test-alfred-features.js
+test-integration.js
+IMPLEMENTATION_CHECKLIST.md
+playwright.config.js
+.vexify.db
+
+# Git and IDE
+.git
+.gitignore
+.claude
+.codemode.json
+
+# Node
+node_modules
+package-lock.json
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
