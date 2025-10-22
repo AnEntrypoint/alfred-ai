@@ -9,9 +9,6 @@
   },
   "scripts": {
     "start": "node alfred-cli.js",
-    "original": "node cli.js",
-    "persistent": "USE_PERSISTENT_MODE=true node alfred-cli.js",
-    "interactive": "node alfred-cli.js --interactive",
     "test:gpu": "source /etc/profile.d/gpu-acceleration.sh && playwright test",
     "playwright:gpu": "source /etc/profile.d/gpu-acceleration.sh && playwright"
   },
