@@ -226,12 +226,8 @@ app.listen(port, () => {
     try {
       const command = args.length > 0 ? args.join(' ') : null;
 
-      // Start MCP servers only if needed for interactive mode or specific commands
-      if (!command || command.includes('playwright') || command.includes('mcp') || command.includes('browser')) {
-        await this.startMCPServers();
-      } else {
-        console.log('⚡ Running in direct mode (no MCP servers)');
-      }
+      // Always start MCP servers
+      await this.startMCPServers();
 
       if (!command) {
         await this.startInteractiveMode();
@@ -265,6 +261,7 @@ Features:
   🔧 JavaScript and Bash execution
   🚀 Immediate output collection
   📦 No artificial delays or timeouts
+  🌐 Always runs in MCP mode
 
 Examples:
   alfred "create express server"
