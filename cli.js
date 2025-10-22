@@ -326,6 +326,18 @@ function convertCommonJSToESM(code) {
 }
 
 async function main() {
+  // Check if we should use the new persistent agentic mode
+  if (process.env.USE_PERSISTENT_MODE === 'true') {
+    console.log('🚀 Using Persistent Agentic Mode...\n');
+    const { PersistentAgenticExecutor } = await import('./persistent-agentic-mode.js');
+    const executor = new PersistentAgenticExecutor();
+
+    await executor.initialize();
+    await executor.executeTask(initialPrompt);
+    executor.cleanup();
+    process.exit(0);
+  }
+
   const authToken = process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY;
   const baseURL = process.env.ANTHROPIC_BASE_URL;
 
@@ -413,7 +425,7 @@ async function main() {
 
   console.log(`✅ Loaded ${(vexify?.tools?.length || 0) + playwright.tools.length} MCP tools\n`);
   console.log(`🤖 Using model: ${models.sonnet}\n`);
-  console.log(`🚀 Starting agentic loop...\n`);
+  console.log(`🚀 Starting continuous agentic loop (no iteration limits)...\n`);
 
   const systemPrompt = `You are Alfred, an autonomous coding assistant. You execute coding tasks by writing JavaScript code that uses available tools.
 
@@ -431,6 +443,7 @@ EXECUTION STRATEGY:
 - Test each step before proceeding to the next
 - Use console.log() to show progress between steps
 - Keep executing until the task is fully complete
+- NO ITERATION LIMITS - run as long as needed to complete the task
 
 USER INTERRUPTIONS:
 - Additional prompts may arrive during execution as "[User interruption]: message"
@@ -462,7 +475,7 @@ REQUIREMENTS:
 10. Always close browser with playwright_close()
 11. Use console.log() for progress
 12. Handle errors with try/catch
-13. Run as many executions as needed to complete the task
+13. Run as many executions as needed to complete the task (NO LIMITS)
 14. Test each step before building the next
 
 BASH EXECUTION CONTEXT:
@@ -506,23 +519,35 @@ IMPORTANT CONTEXT AWARENESS:
 SUCCESS DETECTION:
 - Stop when you see clear indicators: Task completed, successfully created/deployed/tested, done, finished
 - If no success indicators, continue with next iteration
-- Maximum 10 iterations - stop if task incomplete
+- NO ITERATION LIMITS - keep working until task is complete
 
 ${additionalTools}
 
 Return ONLY executable JavaScript code, no explanations.`;
 
   let iteration = 0;
-  const maxIterations = 10;
+  // Remove iteration limits - run continuously until task is complete
   let conversationHistory = [
     { role: 'user', content: initialPrompt }
   ];
   let executionHistory = []; // Track code executions and their outputs
   const tokenTracker = { totalTokensUsed: 0 }; // Track cumulative token usage
 
-  while (iteration < maxIterations) {
+  // Progress reporting variables
+  let lastProgressReport = Date.now();
+  const progressInterval = 60000; // 60 seconds
+
+  while (true) { // Continuous loop without limits
     iteration++;
-    console.log(`\n🔄 Iteration ${iteration}/${maxIterations}\n`);
+
+    // Check if we should report progress
+    const now = Date.now();
+    if (now - lastProgressReport >= progressInterval) {
+      console.log(`\n📊 [Progress Report] Iteration ${iteration} | Tokens: ${tokenTracker.totalTokensUsed.toLocaleString()} | Task: ${initialPrompt.substring(0, 50)}...\n`);
+      lastProgressReport = now;
+    }
+
+    console.log(`\n🔄 Iteration ${iteration}\n`);
 
     // Clean up old execution outputs (remove outputs older than 5 executions)
     executionHistory = executionHistory.filter(exec => iteration - exec.iteration <= 5);
@@ -614,10 +639,6 @@ Return ONLY executable JavaScript code, no explanations.`;
 
   if (vexify?.proc) vexify.proc.kill();
   playwright.proc.kill();
-
-  if (iteration >= maxIterations) {
-    console.log(`\n⚠️  Reached maximum iterations (${maxIterations}). Task may be incomplete.`);
-  }
 
   // Display final token usage summary
   console.log(`\n📊 Final token usage summary:`);
