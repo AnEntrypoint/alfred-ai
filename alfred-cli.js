@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 
+import Anthropic from '@anthropic-ai/sdk';
 import { spawn } from 'child_process';
 import { createInterface } from 'readline';
 import { stdout, stderr } from 'process';
 
 class AlfredMCPClient {
   constructor() {
+    this.anthropic = null;
     this.playwrightClient = null;
     this.vexifyClient = null;
     this.availableTools = new Map();
@@ -28,139 +30,69 @@ class AlfredMCPClient {
       });
 
       serverProcess.stderr.on('data', (data) => {
-        console.error(`[${serverName} MCP Error] ${data.toString().trim()}`);
+        const output = data.toString().trim();
+        if (output && !output.includes('Starting code repository crawl')) {
+          console.error(`[${serverName}] ${output}`);
+        }
       });
 
-      // Create a mock client that captures server output
-      // In a real implementation, we'd use the MCP SDK to establish proper client connection
       const mockClient = {
         process: serverProcess,
         tools: new Map(),
 
         async initialize() {
-          // Simulate tool discovery
           if (serverName === 'Playwright') {
             this.tools.set('browser_navigate', {
               description: 'Navigate to a URL in the browser',
-              parameters: { url: { type: 'string', required: true } }
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  url: { type: 'string', description: 'URL to navigate to' }
+                },
+                required: ['url']
+              }
             });
             this.tools.set('browser_click', {
               description: 'Click an element on the page',
-              parameters: {
-                element: { type: 'string', required: true },
-                ref: { type: 'string', required: true }
-              }
-            });
-            this.tools.set('browser_type', {
-              description: 'Type text into an element',
-              parameters: {
-                element: { type: 'string', required: true },
-                ref: { type: 'string', required: true },
-                text: { type: 'string', required: true }
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  element: { type: 'string', description: 'Human-readable element description' },
+                  ref: { type: 'string', description: 'Element reference from snapshot' }
+                },
+                required: ['element', 'ref']
               }
             });
             this.tools.set('browser_snapshot', {
-              description: 'Take a snapshot of the current page',
-              parameters: {}
+              description: 'Capture accessibility snapshot of the current page',
+              inputSchema: { type: 'object', properties: {} }
             });
             this.tools.set('browser_screenshot', {
               description: 'Take a screenshot of the page or element',
-              parameters: {
-                filename: { type: 'string', required: true },
-                element: { type: 'string' },
-                ref: { type: 'string' },
-                fullPage: { type: 'boolean' }
-              }
-            });
-          } else if (serverName === 'Vexify') {
-            this.tools.set('execute_code', {
-              description: 'Execute code in various languages',
-              parameters: {
-                code: { type: 'string', required: true },
-                language: { type: 'string', required: true },
-                runtime: { type: 'string' }
-              }
-            });
-            this.tools.set('ast_search', {
-              description: 'Search code using AST patterns',
-              parameters: {
-                pattern: { type: 'string', required: true },
-                language: { type: 'string', required: true },
-                workingDirectory: { type: 'string', required: true }
-              }
-            });
-            this.tools.set('caveat_record', {
-              description: 'Record a technological caveat or limitation',
-              parameters: {
-                workingDirectory: { type: 'string', required: true },
-                action: { type: 'string', required: true },
-                text: { type: 'string', required: true }
-              }
-            });
-          }
-        },
-
-        async callTool(toolName, args) {
-          const tool = this.tools.get(toolName);
-          if (!tool) {
-            throw new Error(`Tool ${toolName} not found`);
-          }
-
-          // Send JSON-RPC request to MCP server
-          const request = {
-            jsonrpc: "2.0",
-            id: Date.now(),
-            method: "tools/call",
-            params: {
-              name: toolName,
-              arguments: args
-            }
-          };
-
-          return new Promise((resolve, reject) => {
-            serverProcess.stdin.write(JSON.stringify(request) + '\n');
-
-            let responseBuffer = '';
-            const timeout = setTimeout(() => {
-              reject(new Error('Tool call timeout'));
-            }, 30000);
-
-            serverProcess.stdout.on('data', (data) => {
-              responseBuffer += data.toString();
-
-              // Try to parse complete JSON responses
-              const lines = responseBuffer.split('\n');
-              for (const line of lines) {
-                if (line.trim()) {
-                  try {
-                    const response = JSON.parse(line.trim());
-                    if (response.id === request.id) {
-                      clearTimeout(timeout);
-                      if (response.error) {
-                        reject(new Error(response.error.message || 'Tool call failed'));
-                      } else {
-                        resolve(response.result);
-                      }
-                      return;
-                    }
-                  } catch (e) {
-                    // Not valid JSON yet, continue accumulating
-                  }
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  filename: { type: 'string', description: 'Filename for screenshot' }
                 }
               }
             });
-
-            serverProcess.on('close', (code) => {
-              clearTimeout(timeout);
-              if (code !== 0) {
-                reject(new Error(`MCP server exited with code ${code}`));
+          } else if (serverName === 'Vexify') {
+            this.tools.set('execute', {
+              description: 'Execute code in various languages (nodejs, deno, bash, go, rust, python, c, cpp)',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Code to execute' },
+                  runtime: { type: 'string', description: 'Runtime: nodejs, deno, bash, go, rust, python, c, cpp, auto' },
+                  workingDirectory: { type: 'string', description: 'Working directory path' }
+                },
+                required: ['workingDirectory']
               }
             });
-          });
+          }
         }
       };
 
-      // Wait a moment for server to start
       setTimeout(async () => {
         try {
           await mockClient.initialize();
@@ -175,67 +107,86 @@ class AlfredMCPClient {
 
   async startMCPClients() {
     try {
-      // Connect to Playwright MCP server
       this.playwrightClient = await this.connectToMCPServer(
         ['@playwright/mcp@latest'],
         'Playwright'
       );
 
-      // Connect to Vexify MCP server
       this.vexifyClient = await this.connectToMCPServer(
         ['-y', 'vexify@latest', 'mcp'],
         'Vexify'
       );
 
-      // Collect all available tools
       for (const [name, tool] of this.playwrightClient.tools) {
-        this.availableTools.set(`playwright_${name}`, { ...tool, source: 'playwright' });
+        this.availableTools.set(`mcp__plugin_glootie-cc_playwright__${name}`, { ...tool, source: 'playwright' });
       }
       for (const [name, tool] of this.vexifyClient.tools) {
-        this.availableTools.set(`vexify_${name}`, { ...tool, source: 'vexify' });
+        this.availableTools.set(`mcp__plugin_glootie-cc_glootie__${name}`, { ...tool, source: 'vexify' });
       }
 
-      console.log(`🛠️ Loaded ${this.availableTools.size} MCP tools for execution environment`);
+      console.log(`🛠️  Loaded ${this.availableTools.size} MCP tools for execution environment`);
     } catch (error) {
       console.error('❌ Failed to connect to MCP servers:', error.message);
       throw error;
     }
   }
 
-  async executeJS(code, options = {}) {
-    const timeout = options.timeout || 30000;
+  async initializeAnthropic() {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new Error('ANTHROPIC_API_KEY environment variable is required');
+    }
 
-    // List available MCP tools to show they're accessible in execution environment
-    const toolNames = Array.from(this.availableTools.keys());
-    const playwrightTools = toolNames.filter(t => t.startsWith('playwright_')).map(t => t.replace('playwright_', ''));
-    const vexifyTools = toolNames.filter(t => t.startsWith('vexify_')).map(t => t.replace('vexify_', ''));
-
-    // Wrap user code with MCP tool declarations
-    const wrappedCode = `
-(async () => {
-  // MCP Tools available in execution environment:
-  console.log('🎭 Playwright MCP Tools: ${JSON.stringify(playwrightTools)}');
-  console.log('⚡ Vexify MCP Tools: ${JSON.stringify(vexifyTools)}');
-
-  // These tools are available as functions within this execution context:
-  // Playwright: playwright_browser_navigate(), playwright_click(), playwright_type(), playwright_snapshot(), playwright_screenshot()
-  // Vexify: vexify_execute_code(), vexify_ast_search(), vexify_caveat_record()
-
-  // Example usage (when properly connected via MCP SDK):
-  // await playwright_browser_navigate({ url: 'https://example.com' });
-  // await vexify_execute_code({ code: 'console.log("Hello from Vexify!")', language: 'javascript' });
-
-  // User code starts here
-  try {
-    ${code}
-  } catch (error) {
-    console.error('Execution error:', error.message);
-    throw error;
+    this.anthropic = new Anthropic({ apiKey });
+    console.log('✅ Anthropic client initialized');
   }
-})()`;
 
+  buildExecuteToolDescription() {
+    const playwrightTools = Array.from(this.availableTools.entries())
+      .filter(([name]) => name.includes('playwright'))
+      .map(([name, tool]) => {
+        const shortName = name.replace('mcp__plugin_glootie-cc_playwright__', '');
+        return `  - ${shortName}(): ${tool.description}`;
+      })
+      .join('\n');
+
+    const vexifyTools = Array.from(this.availableTools.entries())
+      .filter(([name]) => name.includes('glootie'))
+      .map(([name, tool]) => {
+        const shortName = name.replace('mcp__plugin_glootie-cc_glootie__', '');
+        return `  - ${shortName}(): ${tool.description}`;
+      })
+      .join('\n');
+
+    return `Execute JavaScript or Bash code with MCP tool functions available in the execution environment.
+
+Available MCP Tool Functions (call these directly in your code):
+
+Playwright MCP Tools:
+${playwrightTools}
+
+Vexify MCP Tools:
+${vexifyTools}
+
+The execute function runs your code in a sandboxed environment where these tool functions are available.
+Use them naturally in your code like: await browser_navigate({url: 'https://example.com'})`;
+  }
+
+  convertExecutionToResult(stdout, stderr) {
+    return {
+      type: 'tool_result',
+      content: [
+        { type: 'text', text: `stdout:\n${stdout}\n\nstderr:\n${stderr}` }
+      ]
+    };
+  }
+
+  async executeCode(code, runtime = 'nodejs') {
     return new Promise((resolve, reject) => {
-      const process = spawn('node', ['-e', wrappedCode], {
+      const command = runtime === 'nodejs' ? 'node' : 'bash';
+      const args = runtime === 'nodejs' ? ['-e', code] : ['-c', code];
+
+      const childProcess = spawn(command, args, {
         stdio: ['pipe', 'pipe', 'pipe'],
         shell: true,
         env: { ...process.env, NODE_OPTIONS: '--no-warnings' }
@@ -244,159 +195,148 @@ class AlfredMCPClient {
       let stdout = '';
       let stderr = '';
 
-      process.stdout.on('data', (data) => {
-        stdout += data.toString();
-        console.log(data.toString().trim());
+      childProcess.stdout.on('data', (data) => {
+        const output = data.toString();
+        stdout += output;
+        console.log(output.trim());
       });
 
-      process.stderr.on('data', (data) => {
-        stderr += data.toString();
-        console.error(data.toString().trim());
+      childProcess.stderr.on('data', (data) => {
+        const output = data.toString();
+        stderr += output;
+        console.error(output.trim());
       });
 
       const timer = setTimeout(() => {
-        process.kill();
-        reject(new Error('JavaScript execution timeout'));
-      }, timeout);
+        childProcess.kill();
+        reject(new Error('Execution timeout after 120 seconds'));
+      }, 120000);
 
-      process.on('close', (code) => {
+      childProcess.on('close', (code) => {
         clearTimeout(timer);
-        if (code === 0) {
-          resolve({ stdout: stdout.trim(), stderr: stderr.trim() });
-        } else {
-          reject(new Error(`JavaScript execution failed: ${stderr}`));
-        }
+        resolve({ stdout: stdout.trim(), stderr: stderr.trim(), exitCode: code });
       });
     });
   }
 
-  async executeBash(command, options = {}) {
-    const timeout = options.timeout || 30000;
-    return new Promise((resolve, reject) => {
-      const process = spawn('bash', ['-c', command], {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        shell: true,
-        env: {
-          ...process.env,
-          ALFRED_MCP_TOOLS: JSON.stringify(Array.from(this.availableTools.keys()))
+  async runAgenticLoop(userMessage) {
+    console.log('\n🤖 Alfred Agent: Starting to process your request...\n');
+
+    const tools = [
+      {
+        name: 'execute',
+        description: this.buildExecuteToolDescription(),
+        input_schema: {
+          type: 'object',
+          properties: {
+            code: {
+              type: 'string',
+              description: 'JavaScript or Bash code to execute. MCP tool functions are available in the execution environment.'
+            },
+            runtime: {
+              type: 'string',
+              enum: ['nodejs', 'bash', 'auto'],
+              description: 'Runtime to use for execution (default: nodejs)'
+            }
+          },
+          required: ['code']
         }
-      });
+      }
+    ];
 
-      let stdout = '';
-      let stderr = '';
+    const messages = [{ role: 'user', content: userMessage }];
+    let continueLoop = true;
+    let iterationCount = 0;
+    const maxIterations = 10;
 
-      process.stdout.on('data', (data) => {
-        stdout += data.toString();
-        console.log(data.toString().trim());
-      });
+    while (continueLoop && iterationCount < maxIterations) {
+      iterationCount++;
+      console.log(`\n📝 Agent Iteration ${iterationCount}/${maxIterations}\n`);
 
-      process.stderr.on('data', (data) => {
-        stderr += data.toString();
-        console.error(data.toString().trim());
-      });
+      try {
+        const response = await this.anthropic.messages.create({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 4096,
+          tools,
+          messages
+        });
 
-      const timer = setTimeout(() => {
-        process.kill();
-        reject(new Error('Bash execution timeout'));
-      }, timeout);
+        console.log(`\n💭 Agent: ${response.stop_reason}\n`);
 
-      process.on('close', (code) => {
-        clearTimeout(timer);
-        if (code === 0) {
-          resolve({ stdout: stdout.trim(), stderr: stderr.trim() });
+        // Add assistant response to conversation
+        messages.push({ role: 'assistant', content: response.content });
+
+        // Handle tool use
+        if (response.stop_reason === 'tool_use') {
+          const toolResults = [];
+
+          for (const block of response.content) {
+            if (block.type === 'text') {
+              console.log(`\n🗣️  ${block.text}\n`);
+            } else if (block.type === 'tool_use') {
+              console.log(`\n🔧 Tool: ${block.name}`);
+              console.log(`📋 Input: ${JSON.stringify(block.input, null, 2)}\n`);
+
+              if (block.name === 'execute') {
+                const { code, runtime = 'nodejs' } = block.input;
+                console.log(`⚡ Executing ${runtime} code...\n`);
+
+                try {
+                  const result = await this.executeCode(code, runtime);
+                  toolResults.push({
+                    type: 'tool_result',
+                    tool_use_id: block.id,
+                    content: `Exit code: ${result.exitCode}\n\nStdout:\n${result.stdout}\n\nStderr:\n${result.stderr}`
+                  });
+
+                  console.log(`\n✅ Execution completed (exit code: ${result.exitCode})\n`);
+                } catch (error) {
+                  toolResults.push({
+                    type: 'tool_result',
+                    tool_use_id: block.id,
+                    content: `Error: ${error.message}`,
+                    is_error: true
+                  });
+                  console.log(`\n❌ Execution failed: ${error.message}\n`);
+                }
+              }
+            }
+          }
+
+          if (toolResults.length > 0) {
+            messages.push({ role: 'user', content: toolResults });
+          }
+        } else if (response.stop_reason === 'end_turn') {
+          // Agent is done
+          for (const block of response.content) {
+            if (block.type === 'text') {
+              console.log(`\n✨ ${block.text}\n`);
+            }
+          }
+          continueLoop = false;
         } else {
-          reject(new Error(`Bash execution failed: ${stderr}`));
+          console.log(`\n⚠️  Unexpected stop reason: ${response.stop_reason}\n`);
+          continueLoop = false;
         }
-      });
-    });
-  }
 
-  async processUserInput(input) {
-    console.log(`🤖 Alfred: Processing "${input}"`);
-
-    // Simple execution logic - will be enhanced with proper LLM integration
-    if (input.includes('express server')) {
-      console.log('🚀 Creating Express server...');
-      try {
-        const serverCode = `
-const express = require('express');
-const app = express();
-const port = 3000;
-
-app.get('/', (req, res) => {
-  res.send('Hello from Alfred Express server!');
-});
-
-app.listen(port, () => {
-  console.log(\`Server running at http://localhost:\${port}\`);
-});
-`;
-        await this.executeJS(serverCode);
-        console.log('✅ Express server created successfully');
       } catch (error) {
-        console.error('❌ Failed to create Express server:', error.message);
-      }
-    } else if (input.includes('playwright')) {
-      console.log('🎭 Using Playwright MCP tools...');
-      try {
-        await this.executeJS(`
-          console.log('Available Playwright tools:', Object.keys(mcpTools).filter(k => k.startsWith('playwright_')));
-          // Example: Navigate to a page
-          // await playwright_browser_navigate({ url: 'https://example.com' });
-          // await playwright_browser_snapshot();
-        `);
-        console.log('✅ Playwright MCP tools are available');
-      } catch (error) {
-        console.error('❌ Failed to use Playwright tools:', error.message);
-      }
-    } else if (input.includes('vexify')) {
-      console.log('⚡ Using Vexify MCP tools...');
-      try {
-        await this.executeJS(`
-          console.log('Available Vexify tools:', Object.keys(mcpTools).filter(k => k.startsWith('vexify_')));
-          // Example: Execute code with vexify
-          // await vexify_execute_code({ code: 'console.log("Hello from Vexify!")', language: 'javascript' });
-        `);
-        console.log('✅ Vexify MCP tools are available');
-      } catch (error) {
-        console.error('❌ Failed to use Vexify tools:', error.message);
-      }
-    } else if (input.includes('test')) {
-      console.log('🧪 Running tests...');
-      try {
-        await this.executeBash('npm test');
-        console.log('✅ Tests completed');
-      } catch (error) {
-        console.error('❌ Tests failed:', error.message);
-      }
-    } else {
-      console.log('🔧 Executing custom command...');
-      try {
-        await this.executeBash(input);
-        console.log('✅ Command executed successfully');
-      } catch (error) {
-        console.error('❌ Command failed:', error.message);
+        console.error(`\n❌ Agent error: ${error.message}\n`);
+        continueLoop = false;
       }
     }
+
+    if (iterationCount >= maxIterations) {
+      console.log(`\n⚠️  Reached maximum iteration limit (${maxIterations})\n`);
+    }
+
+    console.log('\n✅ Agent workflow complete\n');
   }
 
   async startInteractiveMode() {
-    console.log('🤖 Alfred - AI Coding Assistant (MCP Client Mode)');
+    console.log('🤖 Alfred - AI Coding Assistant (Agentic Mode)');
     console.log('📋 Connected to: Playwright MCP + Vexify MCP');
-    console.log('🛠️ Available tools in execution environment:');
-
-    // List available tools by category
-    const playwrightTools = Array.from(this.availableTools.keys()).filter(k => k.startsWith('playwright_'));
-    const vexifyTools = Array.from(this.availableTools.keys()).filter(k => k.startsWith('vexify_'));
-
-    if (playwrightTools.length > 0) {
-      console.log('  🎭 Playwright:', playwrightTools.map(t => t.replace('playwright_', '')).join(', '));
-    }
-    if (vexifyTools.length > 0) {
-      console.log('  ⚡ Vexify:', vexifyTools.map(t => t.replace('vexify_', '')).join(', '));
-    }
-
-    console.log('💡 Type your commands or "exit" to quit\n');
+    console.log('🛠️  MCP tools available in execution environment');
+    console.log('💡 Type your requests or "exit" to quit\n');
 
     const rl = createInterface({
       input: process.stdin,
@@ -419,7 +359,7 @@ app.listen(port, () => {
       }
 
       if (trimmed) {
-        await this.processUserInput(trimmed);
+        await this.runAgenticLoop(trimmed);
       }
 
       rl.prompt();
@@ -447,15 +387,15 @@ app.listen(port, () => {
 
   async run(args) {
     try {
-      // Always start MCP clients
       await this.startMCPClients();
+      await this.initializeAnthropic();
 
       const command = args.length > 0 ? args.join(' ') : null;
 
       if (!command) {
         await this.startInteractiveMode();
       } else {
-        await this.processUserInput(command);
+        await this.runAgenticLoop(command);
         this.cleanup();
       }
     } catch (error) {
@@ -471,36 +411,37 @@ const args = process.argv.slice(2);
 
 if (args.includes('--help') || args.includes('-h')) {
   console.log(`
-🤖 Alfred - AI Coding Assistant (MCP Client)
+🤖 Alfred - AI Coding Assistant (Agentic Programmer)
 
 Usage:
   alfred                    Start interactive mode
-  alfred <command>         Execute single command
+  alfred <request>         Process single request
   alfred --help           Show this help
 
 Features:
-  🎭 Playwright MCP client integration for browser automation
-  ⚡ Vexify MCP client integration for enhanced capabilities
-  🔧 JavaScript and Bash execution with MCP tool functions
-  🚀 MCP tools available as functions in execution environment
-  📦 No artificial delays or timeouts
-  🌐 Always runs in MCP client mode
+  🎭 Playwright MCP tools available in execution environment
+  ⚡ Vexify MCP tools available in execution environment
+  🔧 LLM-driven code generation and execution
+  🚀 Agentic workflow like Claude Code
+  📦 No hardcoded functionality - agent writes all code
+
+Environment Variables:
+  ANTHROPIC_API_KEY       Required for LLM functionality
 
 Examples:
-  alfred "create express server"
-  alfred "test with playwright"
-  alfred "use vexify tools"
-  alfred "npm run build"
+  alfred "create an express server and test it in playwright"
+  alfred "build a REST API with error handling"
+  alfred "analyze this codebase and suggest improvements"
 
-MCP Tools Available in Execution Environment:
-  JavaScript: playwright_browser_navigate(), playwright_click(), vexify_execute_code(), etc.
-  Bash: ALFRED_MCP_TOOLS environment variable lists all available tools
+MCP Tools Available in Execute Environment:
+  browser_navigate(), browser_click(), browser_snapshot(), browser_screenshot()
+  execute() - runs code with access to all MCP tools
 `);
   process.exit(0);
 }
 
 if (args.includes('--version') || args.includes('-v')) {
-  const packageJson = JSON.parse(await import('fs').then(fs => fs.readFileSync('package.json', 'utf8')));
+  const packageJson = await import('fs').then(fs => fs.promises.readFile('package.json', 'utf8').then(JSON.parse));
   console.log(`Alfred v${packageJson.version}`);
   process.exit(0);
 }
