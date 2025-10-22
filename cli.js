@@ -329,8 +329,8 @@ async function main() {
   console.log('⏳ Starting MCP servers...\n');
 
   // Start Playwright MCP server without custom args for now
-  const playwright = await startMCPServer('playwright', 'npx', ['-y', '@microsoft/playwright-mcp']);
-  mcpServers.set('playwright', { ...playwright, command: 'npx', args: ['-y', '@microsoft/playwright-mcp'] });
+  const playwright = await startMCPServer('playwright', 'npx', ['-y', '@playwright/mcp@latest']);
+  mcpServers.set('playwright', { ...playwright, command: 'npx', args: ['-y', '@playwright/mcp@latest'] });
 
   const mcpWrappers = [
     ...playwright.tools.map(t => createMCPToolWrapper(t.name, 'playwright', mcpServers))
