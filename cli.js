@@ -2,6 +2,7 @@
 
 import { execute } from './agentic-mode.js';
 import { spawn } from 'child_process';
+import { join } from 'path';
 
 // Read initial prompt from command line
 const initialPrompt = process.argv.slice(2).join(' ');
@@ -328,15 +329,27 @@ async function main() {
 
   console.log('⏳ Starting MCP servers...\n');
 
-  // Start Playwright MCP server without custom args for now
+  // Start Playwright MCP server
   const playwright = await startMCPServer('playwright', 'npx', ['-y', '@playwright/mcp@latest']);
   mcpServers.set('playwright', { ...playwright, command: 'npx', args: ['-y', '@playwright/mcp@latest'] });
 
+  // Try to start vexify MCP server (optional)
+  let vexify = null;
+  try {
+    vexify = await startMCPServer('vexify', 'node', [join(process.cwd(), 'vexify-mcp-server.js')]);
+    mcpServers.set('vexify', { ...vexify, command: 'node', args: [join(process.cwd(), 'vexify-mcp-server.js')] });
+    console.log('✅ Vexify MCP server started successfully\n');
+  } catch (error) {
+    console.log('⚠️  Vexify MCP server not available (will use fallbacks)\n');
+    vexify = { tools: [] }; // Empty fallback
+  }
+
   const mcpWrappers = [
+    ...(vexify?.tools || []).map(t => createMCPToolWrapper(t.name, 'vexify', mcpServers)),
     ...playwright.tools.map(t => createMCPToolWrapper(t.name, 'playwright', mcpServers))
   ].join('\n\n');
 
-  console.log(`✅ Loaded ${playwright.tools.length} MCP tools\n`);
+  console.log(`✅ Loaded ${(vexify?.tools?.length || 0) + playwright.tools.length} MCP tools\n`);
   console.log(`🤖 Using model: ${models.sonnet}\n`);
   console.log(`🚀 Starting agentic loop...\n`);
 
@@ -344,6 +357,7 @@ async function main() {
 
 AVAILABLE TOOLS (pre-imported and ready to use):
 - Edit, Glob, Grep, Bash, LS, Read, Write
+${vexify?.tools ? vexify.tools.map(t => `- ${t.name}`).join('\n') : ''}
 ${playwright.tools.map(t => `- ${t.name}`).join('\n')}
 
 CRITICAL: ALL TOOLS ARE ALREADY AVAILABLE AS FUNCTIONS - NO IMPORTS NEEDED!
@@ -467,6 +481,7 @@ Return ONLY executable JavaScript code, no explanations.`;
     }
   }
 
+  if (vexify?.proc) vexify.proc.kill();
   playwright.proc.kill();
 
   if (iteration >= maxIterations) {
