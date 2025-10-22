@@ -427,6 +427,7 @@ Features:
   📦 No hardcoded functionality - agent writes all code
 
 Authentication:
+  🎭 Claude Code OAuth token (auto-detected from logged-in Claude Code)
   🔑 Browser-based authentication (recommended)
   🌍 Environment variables: ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN
   💾 Secure local token storage in ~/.alfred/
