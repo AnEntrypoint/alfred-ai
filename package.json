@@ -1,6 +1,6 @@
 {
   "name": "alfred-ai",
-  "version": "5.17.0",
+  "version": "5.18.0",
   "description": "Alfred AI - A simplified, SDK-free version of codemode using direct MCP client/server communication with automatic OAuth authentication",
   "main": "alfred-ai.js",
   "type": "module",
@@ -9,8 +9,7 @@
   },
   "scripts": {
     "start": "node alfred-ai.js",
-    "test": "node test.js",
-    "test:validation": "node validation-test.js"
+    "test": "node timeout-test.js"
   },
   "files": [
     "alfred-ai.js",
@@ -18,11 +17,11 @@
     "built-in-tools-mcp.js",
     "ast-grep-wrapper.js",
     "ast-error-handling.js",
-    "test.js",
-    "validation-test.js",
+    "timeout-test.js",
     ".codemode.json",
     "README.md",
-    "CLAUDE.md"
+    "CLAUDE.md",
+    "EXECUTION_GUIDE.md"
   ],
   "dependencies": {
     "@anthropic-ai/sdk": "^0.38.0",
