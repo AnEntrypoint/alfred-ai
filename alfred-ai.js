@@ -437,7 +437,7 @@ class ExecutionManager {
   }
 
   async execute(args) {
-    const { code, runtime, timeout = 240000 } = args;
+    const { code, runtime, timeout = 10000 } = args;
 
     if (!code) {
       throw new Error('Code is required for execution');
