@@ -436,8 +436,20 @@ class ExecutionManager {
     const execId = `exec_${this.nextExecId++}`;
     console.error(`[Execution Manager] Starting execution ${execId}`);
 
+    // Set up 60-second progress notification
+    const sixtySecondTimer = setTimeout(() => {
+      console.error('\n' + '='.repeat(60));
+      console.error('[60-SECOND NOTIFICATION] Execution still running...');
+      console.error(`[60-SECOND NOTIFICATION] Execution ID: ${execId}`);
+      console.error(`[60-SECOND NOTIFICATION] Runtime: ${runtime}`);
+      console.error(`[60-SECOND NOTIFICATION] Code length: ${code.length} bytes`);
+      console.error('[60-SECOND NOTIFICATION] Check logs above for execution output');
+      console.error('='.repeat(60) + '\n');
+    }, 60000);
+
     try {
       const result = await this.executeCode(code, runtime, timeout);
+      clearTimeout(sixtySecondTimer);
 
       // Store in history
       historyManager.recordExecute(
@@ -445,17 +457,37 @@ class ExecutionManager {
         { success: true, result: this.compactData(result) }
       );
 
+      // End-of-execution notification
+      console.error('\n' + '='.repeat(60));
+      console.error('[EXECUTION COMPLETE] Success');
+      console.error(`[EXECUTION COMPLETE] Execution ID: ${execId}`);
+      console.error(`[EXECUTION COMPLETE] Runtime: ${runtime}`);
+      console.error('[EXECUTION COMPLETE] Full output:');
+      console.error(result);
+      console.error('='.repeat(60) + '\n');
+
       return {
         success: true,
         result,
         execId
       };
     } catch (error) {
+      clearTimeout(sixtySecondTimer);
+
       // Store error in history
       historyManager.recordExecute(
         { code: this.compactCode(code), runtime },
         { success: false, error: error.message }
       );
+
+      // End-of-execution notification with error
+      console.error('\n' + '='.repeat(60));
+      console.error('[EXECUTION FAILED] Error occurred');
+      console.error(`[EXECUTION FAILED] Execution ID: ${execId}`);
+      console.error(`[EXECUTION FAILED] Runtime: ${runtime}`);
+      console.error('[EXECUTION FAILED] Full error output:');
+      console.error(error.message);
+      console.error('='.repeat(60) + '\n');
 
       return {
         success: false,
@@ -468,6 +500,7 @@ class ExecutionManager {
   async executeCode(code, runtime, timeout) {
     return new Promise((resolve, reject) => {
       let tempFile;
+      const startTime = Date.now();
 
       try {
         // Create temporary file
@@ -492,6 +525,7 @@ class ExecutionManager {
 
         let stdout = '';
         let stderr = '';
+        let lastOutputTime = startTime;
 
         child.stdout.on('data', (data) => {
           const output = data.toString();
@@ -515,8 +549,15 @@ class ExecutionManager {
         child.on('close', (code) => {
           clearTimeout(timer);
 
+          const endTime = Date.now();
+          const duration = endTime - startTime;
+          const seconds = (duration / 1000).toFixed(2);
+          const minutes = (duration / 60000).toFixed(2);
+          const timeDisplay = duration > 60000 ? `${minutes}min` : `${seconds}s`;
+
           console.error(`[close hook] Process exited with code: ${code}`);
           console.error(`[close hook] Final stdout length: ${stdout.length}, stderr length: ${stderr.length}`);
+          console.error(`[execution complete] Time: ${timeDisplay}`);
 
           // Cleanup temp file
           try {
@@ -525,10 +566,13 @@ class ExecutionManager {
             // Ignore cleanup errors
           }
 
+          const result = stdout || (stderr ? `Warning: ${stderr}` : 'Execution completed successfully');
+          const resultWithTiming = `${result}\n\nTime: ${timeDisplay}`;
+
           if (code === 0) {
-            resolve(stdout || (stderr ? `Warning: ${stderr}` : 'Execution completed successfully'));
+            resolve(resultWithTiming);
           } else {
-            reject(new Error(`Execution failed with code ${code}: ${stderr || stdout}`));
+            reject(new Error(`Execution failed with code ${code}: ${stderr || stdout}\n\nTime: ${timeDisplay}`));
           }
         });
 
