@@ -52,7 +52,7 @@ class MCPManager extends EventEmitter {
     console.error('[MCP Manager] Initializing servers...');
 
     for (const [serverName, serverConfig] of Object.entries(config.config.mcpServers)) {
-      if (serverName === 'marvin') continue;
+      if (serverName === 'alfred-ai') continue;
 
       try {
         await this.startServer(serverName, serverConfig);
@@ -139,7 +139,7 @@ class MCPManager extends EventEmitter {
       params: {
         protocolVersion: '2024-11-05',
         capabilities: {},
-        clientInfo: { name: 'marvin', version: '1.0.0' }
+        clientInfo: { name: 'alfred-ai', version: '1.0.0' }
       }
     });
 
@@ -432,7 +432,7 @@ class ExecutionManager {
         // (tmpdir and uuidv4 are now imported at the top)
 
         const extension = this.getFileExtension(runtime, code);
-        tempFile = join(tmpdir(), `marvin-${uuidv4()}${extension}`);
+        tempFile = join(tmpdir(), `alfred-ai-${uuidv4()}${extension}`);
 
         fs.writeFileSync(tempFile, code);
 
@@ -589,7 +589,7 @@ class ExecutionManager {
 }
 
 // MCP Server implementation
-class MarvinMCPServer {
+class AlfredMCPServer {
   constructor() {
     this.handlers = new Map();
     this.setupHandlers();
@@ -641,8 +641,8 @@ class MarvinMCPServer {
 
       // Add management tools
       tools.push({
-        name: 'marvin_status',
-        description: 'Get Marvin system status and history summary',
+        name: 'alfred_status',
+        description: 'Get Alfred AI system status and history summary',
         input_schema: {
           type: 'object',
           properties: {}
@@ -650,7 +650,7 @@ class MarvinMCPServer {
       });
 
       tools.push({
-        name: 'marvin_kill',
+        name: 'alfred_kill',
         description: 'Kill a running execution',
         input_schema: {
           type: 'object',
@@ -689,9 +689,9 @@ class MarvinMCPServer {
       try {
         if (name === 'execute') {
           return await this.handleExecute(args);
-        } else if (name === 'marvin_status') {
+        } else if (name === 'alfred_status') {
           return await this.handleStatus();
-        } else if (name === 'marvin_kill') {
+        } else if (name === 'alfred_kill') {
           return await this.handleKill(args);
         } else if (name === 'alfred') {
           return await this.handleAlfred(args);
@@ -778,12 +778,12 @@ class MarvinMCPServer {
   async handleStatus() {
     const historySummary = historyManager.getSummary();
     const allTools = mcpManager.getAllTools();
-    const totalTools = Object.values(allTools).reduce((sum, tools) => sum + tools.length, 0) + 3; // +3 for marvin tools
+    const totalTools = Object.values(allTools).reduce((sum, tools) => sum + tools.length, 0) + 3; // +3 for alfred tools
 
     return {
       content: [{
         type: 'text',
-        text: `Marvin System Status:
+        text: `Alfred AI System Status:
 - MCP Servers: ${Object.keys(allTools).length}
 - Total Tools Available: ${totalTools}
 - History: ${historySummary.mcpCalls} MCP calls, ${historySummary.executeInputs} executions
@@ -794,8 +794,8 @@ ${Object.keys(allTools).map(name => `  - ${name}: ${allTools[name].length} tools
 
 Available Tools:
   - execute: Execute code with automatic runtime detection
-  - marvin_status: Show this status
-  - marvin_kill: Kill running executions
+  - alfred_status: Show this status
+  - alfred_kill: Kill running executions
   - ${Object.entries(allTools).map(([server, tools]) =>
     tools.map(tool => `  - ${server}_${tool.name}: ${tool.description}`).join('\n')
   ).join('\n')}`
@@ -894,7 +894,7 @@ async function main() {
     console.error(`Credits: ${authInfo.creditsReset}`);
   }
 
-  const mcpServer = new MarvinMCPServer();
+  const mcpServer = new AlfredMCPServer();
 
   // Initialize MCP manager
   await mcpManager.initialize();
@@ -902,7 +902,7 @@ async function main() {
   // Initialize execution manager
   executionManager.mcpManager = mcpManager;
 
-  console.error('Marvin ready - Accepting MCP requests via stdio');
+  console.error('Alfred AI ready - Accepting MCP requests via stdio');
 
   // Handle stdio communication
   process.stdin.setEncoding('utf8');
@@ -940,13 +940,13 @@ async function main() {
   });
 
   process.on('SIGINT', () => {
-    console.error('\nMarvin shutting down...');
+    console.error('\nAlfred AI shutting down...');
     mcpManager.shutdown();
     process.exit(0);
   });
 
   process.on('SIGTERM', () => {
-    console.error('\nMarvin shutting down...');
+    console.error('\nAlfred AI shutting down...');
     mcpManager.shutdown();
     process.exit(0);
   });
@@ -1091,7 +1091,7 @@ async function runCLIMode(taskPrompt) {
   historyManager = new HistoryManager();
   executionManager = new ExecutionManager();
 
-  const mcpServer = new MarvinMCPServer();
+  const mcpServer = new AlfredMCPServer();
   await mcpManager.initialize();
   executionManager.mcpManager = mcpManager;
 
@@ -1130,4 +1130,4 @@ if (isMainModule) {
   }
 }
 
-export { MarvinMCPServer, MCPManager, HistoryManager, ExecutionManager };
+export { AlfredMCPServer, MCPManager, HistoryManager, ExecutionManager };
