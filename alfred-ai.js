@@ -385,10 +385,14 @@ class ExecutionManager {
   }
 
   async execute(args) {
-    const { code, runtime = 'auto', timeout = 240000 } = args;
+    const { code, runtime, timeout = 240000 } = args;
 
     if (!code) {
       throw new Error('Code is required for execution');
+    }
+
+    if (!runtime) {
+      throw new Error('Runtime parameter is required (nodejs, deno, bun, python, bash, go, rust, c, cpp)');
     }
 
     const execId = `exec_${this.nextExecId++}`;
@@ -431,28 +435,38 @@ class ExecutionManager {
         // Create temporary file
         // (tmpdir and uuidv4 are now imported at the top)
 
-        const extension = this.getFileExtension(runtime, code);
+        const extension = this.getFileExtension(runtime);
         tempFile = join(tmpdir(), `alfred-ai-${uuidv4()}${extension}`);
 
         fs.writeFileSync(tempFile, code);
 
-        // Determine execution command
+        // Determine execution command - pass both runtime and filepath
         const command = this.getExecutionCommand(runtime, tempFile);
+
+        console.error(`[execution] Spawning ${command.cmd} with args: ${JSON.stringify(command.args)}`);
 
         const child = spawn(command.cmd, command.args, {
           stdio: ['pipe', 'pipe', 'pipe'],
           cwd: process.cwd()
         });
 
+        console.error(`[child process hook] PID: ${child.pid}, Command: ${command.cmd}`);
+
         let stdout = '';
         let stderr = '';
 
         child.stdout.on('data', (data) => {
-          stdout += data.toString();
+          const output = data.toString();
+          stdout += output;
+          console.error(`[stdout hook] Received ${output.length} bytes: ${output.substring(0, 100)}${output.length > 100 ? '...' : ''}`);
+          process.stderr.write(output);
         });
 
         child.stderr.on('data', (data) => {
-          stderr += data.toString();
+          const output = data.toString();
+          stderr += output;
+          console.error(`[stderr hook] Received ${output.length} bytes: ${output.substring(0, 100)}${output.length > 100 ? '...' : ''}`);
+          process.stderr.write(output);
         });
 
         const timer = setTimeout(() => {
@@ -462,6 +476,9 @@ class ExecutionManager {
 
         child.on('close', (code) => {
           clearTimeout(timer);
+
+          console.error(`[close hook] Process exited with code: ${code}`);
+          console.error(`[close hook] Final stdout length: ${stdout.length}, stderr length: ${stderr.length}`);
 
           // Cleanup temp file
           try {
@@ -505,51 +522,55 @@ class ExecutionManager {
     });
   }
 
-  getFileExtension(runtime, code) {
-    if (runtime === 'python' || code.includes('import ') && code.includes('print(')) {
-      return '.py';
+  getFileExtension(runtime) {
+    switch (runtime) {
+      case 'nodejs':
+        return '.js';
+      case 'deno':
+        return '.ts';
+      case 'bun':
+        return '.js';
+      case 'python':
+        return '.py';
+      case 'bash':
+        return '.sh';
+      case 'go':
+        return '.go';
+      case 'rust':
+        return '.rs';
+      case 'c':
+        return '.c';
+      case 'cpp':
+        return '.cpp';
+      default:
+        throw new Error(`Invalid runtime: ${runtime}`);
     }
-    if (runtime === 'bash' || code.includes('#!/bin/bash') || code.includes('echo ')) {
-      return '.sh';
-    }
-    if (runtime === 'go' || code.includes('package main')) {
-      return '.go';
-    }
-    if (runtime === 'rust' || code.includes('fn main()')) {
-      return '.rs';
-    }
-    if (runtime === 'c' || code.includes('#include <stdio.h>')) {
-      return '.c';
-    }
-    if (runtime === 'cpp' || code.includes('#include <iostream>')) {
-      return '.cpp';
-    }
-    // Default to JavaScript/TypeScript
-    return code.includes('import ') || code.includes('export ') ? '.ts' : '.js';
   }
 
   getExecutionCommand(runtime, filepath) {
-    const extension = filepath.split('.').pop();
-
-    switch (extension) {
-      case 'py':
+    switch (runtime) {
+      case 'nodejs':
+        return { cmd: 'node', args: [filepath] };
+      case 'deno':
+        return { cmd: 'deno', args: ['run', filepath] };
+      case 'bun':
+        return { cmd: 'bun', args: ['run', filepath] };
+      case 'python':
         return { cmd: 'python3', args: [filepath] };
-      case 'sh':
+      case 'bash':
         return { cmd: 'bash', args: [filepath] };
       case 'go':
         return { cmd: 'go', args: ['run', filepath] };
-      case 'rs':
+      case 'rust':
         return { cmd: 'rustc', args: [filepath, '-o', filepath.replace('.rs', '')] };
       case 'c':
         const execFile = filepath.replace('.c', '');
-        return { cmd: 'gcc', args: [filepath, '-o', execFile] };
+        return { cmd: 'bash', args: ['-c', `gcc "${filepath}" -o "${execFile}" && "${execFile}"`] };
       case 'cpp':
         const cppExecFile = filepath.replace('.cpp', '');
-        return { cmd: 'g++', args: [filepath, '-o', cppExecFile] };
-      case 'ts':
-        return { cmd: 'npx', args: ['ts-node', filepath] };
+        return { cmd: 'bash', args: ['-c', `g++ "${filepath}" -o "${cppExecFile}" && "${cppExecFile}"`] };
       default:
-        return { cmd: 'node', args: [filepath] };
+        throw new Error(`Invalid runtime: ${runtime}`);
     }
   }
 
@@ -604,7 +625,7 @@ class AlfredMCPServer {
       // Add execute tool
       tools.push({
         name: 'execute',
-        description: 'Execute code with automatic runtime detection',
+        description: 'Execute code in the specified runtime',
         input_schema: {
           type: 'object',
           properties: {
@@ -614,9 +635,8 @@ class AlfredMCPServer {
             },
             runtime: {
               type: 'string',
-              enum: ['auto', 'nodejs', 'python', 'bash', 'go', 'rust', 'c', 'cpp'],
-              description: 'Runtime to use (auto detects from code)',
-              default: 'auto'
+              enum: ['nodejs', 'deno', 'bun', 'python', 'bash', 'go', 'rust', 'c', 'cpp'],
+              description: 'Runtime to execute the code in'
             },
             timeout: {
               type: 'number',
@@ -624,7 +644,7 @@ class AlfredMCPServer {
               default: 240000
             }
           },
-          required: ['code']
+          required: ['code', 'runtime']
         }
       });
 
@@ -723,6 +743,11 @@ class AlfredMCPServer {
       throw new Error('Invalid arguments: "code" parameter is required and must be a string');
     }
 
+    // Check for required 'runtime' parameter
+    if (args.runtime === undefined || args.runtime === null || typeof args.runtime !== 'string') {
+      throw new Error('Invalid arguments: "runtime" parameter is required and must be a string');
+    }
+
     // Handle empty code as a special case - return error response but don't throw
     if (args.code.trim() === '') {
       return {
@@ -743,9 +768,9 @@ class AlfredMCPServer {
       throw new Error(`Invalid arguments: unknown parameter(s): ${invalidParams.join(', ')}`);
     }
 
-    // Validate runtime if provided
-    if (args.runtime && !['auto', 'nodejs', 'python', 'bash', 'go', 'rust', 'c', 'cpp'].includes(args.runtime)) {
-      throw new Error(`Invalid arguments: "runtime" must be one of: auto, nodejs, python, bash, go, rust, c, cpp`);
+    // Validate runtime
+    if (!['nodejs', 'deno', 'bun', 'python', 'bash', 'go', 'rust', 'c', 'cpp'].includes(args.runtime)) {
+      throw new Error(`Invalid arguments: "runtime" must be one of: nodejs, deno, bun, python, bash, go, rust, c, cpp`);
     }
 
     // Validate timeout if provided
