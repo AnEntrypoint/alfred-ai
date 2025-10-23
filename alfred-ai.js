@@ -836,7 +836,8 @@ Available Tools:
       }
 
       // Exclude alfred tool to prevent recursion
-      const output = await runAgenticLoop(prompt, this, apiKey, false, true);
+      // Keep verbose=true for nested calls to maintain observability
+      const output = await runAgenticLoop(prompt, this, apiKey, true, true);
 
       return {
         content: [{
