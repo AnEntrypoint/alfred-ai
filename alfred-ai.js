@@ -996,27 +996,87 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
   // Run agentic loop
   let continueLoop = true;
   while (continueLoop) {
-    const response = await anthropic.messages.create({
+    const stream = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 8000,
       tools: toolsResult.tools,
-      messages
+      messages,
+      stream: true
     });
+
+    let currentText = '';
+    let currentThinking = false;
+    const assistantContent = [];
+    let hasToolUse = false;
+    let stop_reason = '';
+
+    for await (const event of stream) {
+      if (event.type === 'content_block_start') {
+        if (event.content_block.type === 'text') {
+          currentThinking = true;
+          if (verbose) console.error(`\n💭 Thought:`);
+        } else if (event.content_block.type === 'tool_use') {
+          hasToolUse = true;
+          if (verbose) console.error(`\n🔧 Tool: ${event.content_block.name}`);
+          assistantContent.push({
+            type: 'tool_use',
+            id: event.content_block.id,
+            name: event.content_block.name,
+            input: {}
+          });
+        }
+      } else if (event.type === 'content_block_delta') {
+        if (event.delta.type === 'text_delta') {
+          // Stream text output
+          const text = event.delta.text;
+          currentText += text;
+          if (verbose) process.stderr.write(text);
+          output += text;
+        } else if (event.delta.type === 'input_json_delta') {
+          // Accumulate tool input
+          const lastTool = assistantContent[assistantContent.length - 1];
+          if (lastTool && lastTool.type === 'tool_use') {
+            lastTool.input_json = (lastTool.input_json || '') + event.delta.partial_json;
+          }
+        }
+      } else if (event.type === 'content_block_stop') {
+        if (currentThinking) {
+          if (verbose) console.error(''); // newline after streaming text
+          assistantContent.push({ type: 'text', text: currentText });
+          currentText = '';
+          currentThinking = false;
+        } else {
+          // Finalize tool input
+          const lastTool = assistantContent[assistantContent.length - 1];
+          if (lastTool && lastTool.type === 'tool_use' && lastTool.input_json) {
+            lastTool.input = JSON.parse(lastTool.input_json);
+            delete lastTool.input_json;
+          }
+        }
+      } else if (event.type === 'message_delta') {
+        stop_reason = event.delta.stop_reason || stop_reason;
+      }
+    }
 
     messages.push({
       role: 'assistant',
-      content: response.content
+      content: assistantContent
     });
 
-    // Process response
-    let hasToolUse = false;
-    for (const block of response.content) {
-      if (block.type === 'text') {
-        if (verbose) console.log(block.text);
-        output += block.text + '\n';
-      } else if (block.type === 'tool_use') {
-        hasToolUse = true;
-        if (verbose) console.error(`\n🔧 Tool: ${block.name}`);
+    // Process tool uses
+    for (const block of assistantContent) {
+      if (block.type === 'tool_use') {
+        // Log tool input
+        if (verbose && block.input && Object.keys(block.input).length > 0) {
+          console.error(`📥 Input:`);
+          for (const [key, value] of Object.entries(block.input)) {
+            if (typeof value === 'string' && value.length > 200) {
+              console.error(`  ${key}: ${value.substring(0, 200)}...`);
+            } else {
+              console.error(`  ${key}: ${JSON.stringify(value)}`);
+            }
+          }
+        }
 
         try {
           const result = await mcpServer.handleRequest({
@@ -1026,6 +1086,21 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
               arguments: block.input
             }
           });
+
+          // Log tool output
+          if (verbose && result.content) {
+            console.error(`📤 Output:`);
+            for (const contentBlock of result.content) {
+              if (contentBlock.type === 'text') {
+                const text = contentBlock.text;
+                if (text.length > 500) {
+                  console.error(`  ${text.substring(0, 500)}...`);
+                } else {
+                  console.error(`  ${text}`);
+                }
+              }
+            }
+          }
 
           messages.push({
             role: 'user',
@@ -1050,7 +1125,7 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
       }
     }
 
-    continueLoop = hasToolUse && response.stop_reason === 'tool_use';
+    continueLoop = hasToolUse && stop_reason === 'tool_use';
   }
 
   return output;
