@@ -224,7 +224,30 @@ class HistoryManager {
     this.mcpCalls = [];
     this.executeInputs = [];
     this.executeOutputs = [];
+    this.hooks = [];
     this.tokenCount = 0;
+  }
+
+  addHook(hookName, hookOutput) {
+    this.hooks.push({
+      name: hookName,
+      output: hookOutput,
+      timestamp: Date.now()
+    });
+    console.error(`[Hook] ${hookName} added to history`);
+    this.updateTokenCount();
+  }
+
+  logHooks() {
+    if (this.hooks.length === 0) {
+      console.error('[Hooks] No hooks initialized');
+      return;
+    }
+    console.error('[Hooks] Initialized hooks:');
+    for (const hook of this.hooks) {
+      const preview = hook.output.substring(0, 100);
+      console.error(`  - ${hook.name}: ${preview}${hook.output.length > 100 ? '...' : ''}`);
+    }
   }
 
   recordMcpCall(serverName, toolName, args, result) {
@@ -265,6 +288,12 @@ class HistoryManager {
     if (this.executeOutputs.length > 3) {
       const removedOutput = this.executeOutputs.shift();
       this.tokenCount -= this.estimateTokens(removedOutput);
+    }
+
+    // Also clean up old hooks when cleaning up execution outputs
+    if (this.executeOutputs.length > 3 && this.hooks.length > 0) {
+      const removedHook = this.hooks.shift();
+      this.tokenCount -= this.estimateTokens(removedHook);
     }
 
     this.updateTokenCount();
@@ -333,6 +362,10 @@ class HistoryManager {
       totalTokens += this.estimateTokens(output);
     }
 
+    for (const hook of this.hooks) {
+      totalTokens += this.estimateTokens(hook);
+    }
+
     this.tokenCount = totalTokens;
 
     // If we exceed 60k tokens, perform aggressive cleanup
@@ -348,13 +381,18 @@ class HistoryManager {
     const callsToRemove = Math.floor(this.mcpCalls.length / 2);
     this.mcpCalls.splice(0, callsToRemove);
 
-    // Remove oldest execute inputs/outputs
+    // Remove oldest execute inputs/outputs and hooks together
     if (this.executeInputs.length > 1) {
       this.executeInputs.splice(0, Math.floor(this.executeInputs.length / 2));
     }
 
     if (this.executeOutputs.length > 1) {
       this.executeOutputs.splice(0, Math.floor(this.executeOutputs.length / 2));
+    }
+
+    // Remove hooks at same rate as execution outputs
+    if (this.hooks.length > 1) {
+      this.hooks.splice(0, Math.floor(this.hooks.length / 2));
     }
 
     // Compact remaining data aggressively
@@ -892,6 +930,83 @@ Available Tools:
   }
 }
 
+// Initialize hooks
+async function initializeHooks() {
+  console.error('[Hooks] Initializing system hooks...');
+
+  // Hook 1: Thorns hook
+  try {
+    const thornsOutput = await new Promise((resolve, reject) => {
+      const child = spawn('npx', ['-y', 'mcp-thorns@latest'], {
+        cwd: process.cwd(),
+        timeout: 5000
+      });
+      let output = '';
+      child.stdout.on('data', (data) => { output += data.toString(); });
+      child.on('close', (code) => {
+        if (code === 0 && output) {
+          resolve(output.trim());
+        } else {
+          reject(new Error('Thorns hook execution failed'));
+        }
+      });
+      child.on('error', reject);
+    });
+    historyManager.addHook('thorns', thornsOutput);
+  } catch (error) {
+    console.error('[Hooks] Thorns hook failed:', error.message);
+  }
+
+  // Hook 2: Prompt hook (START_MD from remote)
+  try {
+    const promptOutput = await new Promise((resolve, reject) => {
+      const child = spawn('curl', ['-s', 'https://raw.githubusercontent.com/AnEntrypoint/glootie-cc/refs/heads/master/start.md'], {
+        cwd: process.cwd(),
+        timeout: 5000
+      });
+      let output = '';
+      child.stdout.on('data', (data) => { output += data.toString(); });
+      child.on('close', (code) => {
+        if (code === 0 && output) {
+          resolve(output.trim());
+        } else {
+          reject(new Error('Prompt hook execution failed'));
+        }
+      });
+      child.on('error', reject);
+    });
+    historyManager.addHook('prompt', promptOutput);
+  } catch (error) {
+    console.error('[Hooks] Prompt hook failed:', error.message);
+  }
+
+  // Hook 3: WFGY hook
+  try {
+    const wfgyOutput = await new Promise((resolve, reject) => {
+      const child = spawn('npx', ['-y', 'wfgy@latest', 'hook'], {
+        cwd: process.cwd(),
+        timeout: 5000
+      });
+      let output = '';
+      child.stdout.on('data', (data) => { output += data.toString(); });
+      child.on('close', (code) => {
+        if (code === 0 && output) {
+          resolve(output.trim());
+        } else {
+          reject(new Error('WFGY hook execution failed'));
+        }
+      });
+      child.on('error', reject);
+    });
+    historyManager.addHook('wfgy', wfgyOutput);
+  } catch (error) {
+    console.error('[Hooks] WFGY hook failed:', error.message);
+  }
+
+  // Log all hooks that were successfully loaded
+  historyManager.logHooks();
+}
+
 // Main server loop
 async function main() {
   console.error('Alfred AI - Simplified CodeMode with OAuth starting...');
@@ -919,6 +1034,9 @@ async function main() {
   if (authInfo.creditsReset) {
     console.error(`Credits: ${authInfo.creditsReset}`);
   }
+
+  // Initialize hooks
+  await initializeHooks();
 
   const mcpServer = new AlfredMCPServer();
 
@@ -1191,6 +1309,9 @@ async function runCLIMode(taskPrompt) {
   mcpManager = new MCPManager();
   historyManager = new HistoryManager();
   executionManager = new ExecutionManager();
+
+  // Initialize hooks
+  await initializeHooks();
 
   const mcpServer = new AlfredMCPServer();
   await mcpManager.initialize();
