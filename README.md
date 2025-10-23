@@ -240,3 +240,36 @@ MIT
 ---
 
 **Alfred: "Your trusted coding assistant, at your service."**
+
+## Authentication Setup
+
+Alfred requires an Anthropic API key to function. Set it up using one of these methods:
+
+### Method 1: Environment Variable (Recommended)
+```bash
+export ANTHROPIC_API_KEY=sk-ant-your-api-key-here
+```
+
+### Method 2: Add to Shell Profile
+```bash
+echo 'export ANTHROPIC_API_KEY=sk-ant-your-api-key-here' >> ~/.bashrc
+source ~/.bashrc
+```
+
+### Method 3: Use .env File
+```bash
+cp .env.example .env
+# Edit .env and add your API key
+source <(grep -v '^#' .env | sed 's/^/export /')
+```
+
+Get your API key from: https://console.anthropic.com/settings/keys
+
+### Testing Authentication
+```bash
+# Check if key is set
+echo $ANTHROPIC_API_KEY
+
+# Test Alfred
+alfred "say hello"
+```
