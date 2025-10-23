@@ -390,23 +390,39 @@ If you complete a task without creating persistent files, YOU HAVE FAILED.
    - Escape special characters properly
    - Always verify file creation: ls -la filename
 
-Available MCP Tool Functions (call these directly in your code):
-
-Playwright MCP Tools:
+🎭 PLAYWRIGHT MCP TOOLS (Browser Automation - Use in execute()):
 ${playwrightTools}
 
-Vexify MCP Tools:
+Usage: Call these functions ONLY within execute(nodejs) code blocks. These are NOT globals - they're injected by the MCP layer at runtime.
+Examples:
+  - await mcp__plugin_glootie_cc_playwright__browser_navigate('http://localhost:3000')
+  - await mcp__plugin_glootie_cc_playwright__browser_click('button[class="test"]')
+  - await mcp__plugin_glootie_cc_playwright__browser_screenshot()
+  - const snapshot = await mcp__plugin_glootie_cc_playwright__browser_snapshot()
+
+🔧 VEXIFY MCP TOOLS (Code Execution & Testing):
 ${vexifyTools}
 
-Alfred MCP Tools (Recursive):
+🤖 ALFRED MCP TOOLS (Recursive AI Agent):
 ${alfredTools}
 
-IMPORTANT MCP STATE MANAGEMENT:
+⚠️  CRITICAL - HOW MCP TOOLS WORK:
+- MCP tools are ONLY available within execute() - they cannot be called as standalone tools
+- When you call execute(nodejs), the MCP layer injects tool functions into the environment
+- You must use the full qualified name: mcp__plugin_glootie_cc_[tool_type]__[tool_name]
+- Playwright tools work with persistent browser sessions across execute() calls
+- Each execute() call gets a fresh process, but MCP state persists
+
+✅ CORRECT - Using MCP tools in execute():
+execute(nodejs) with code that calls: await mcp__plugin_glootie_cc_playwright__browser_navigate('http://...')
+
+❌ WRONG - Trying to use MCP tools outside execute():
+Don't try to call MCP functions from the main environment or expect them to work in isolation
+
+STATE MANAGEMENT:
 - MCP tool servers (Playwright, Vexify, Alfred) maintain persistent state between execute() calls
 - Browser sessions, processes, and other resources persist across multiple execute() calls
-- Each execute() spawns a fresh Node.js/Bash process, but MCP servers remain connected
-- For multi-step operations using execute() vars, write all logic in a single execute() call
-- For multi-step operations using MCP tools, you can spread across multiple execute() calls`;
+- Each execute() spawns a fresh Node.js/Bash process, but MCP servers remain connected`;
   }
 
   queuePostCompletionInstructions() {
