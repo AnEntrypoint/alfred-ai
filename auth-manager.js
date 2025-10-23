@@ -65,6 +65,10 @@ class AuthManager {
       apiKey: this.apiKey
     };
   }
+
+  getApiKey() {
+    return this.apiKey;
+  }
 }
 
 export default AuthManager;
