@@ -241,7 +241,21 @@ class AuthenticationManager {
 
   
   async getAuthentication() {
-    // Priority 1: OAuth tokens (Claude Code with coding credits)
+    // Priority 1: Environment variable API key (explicit user choice)
+    const envToken = process.env.ANTHROPIC_API_KEY;
+    if (envToken) {
+      console.log('🌍 Using ANTHROPIC_API_KEY environment variable');
+      return envToken;
+    }
+
+    // Priority 2: Legacy environment variable (explicit user choice)
+    const legacyToken = process.env.ANTHROPIC_AUTH_TOKEN;
+    if (legacyToken) {
+      console.log('🌍 Using ANTHROPIC_AUTH_TOKEN environment variable');
+      return legacyToken;
+    }
+
+    // Priority 3: OAuth tokens (Claude Code with coding credits)
     const oauthTokens = await this.getOAuthTokens();
     if (oauthTokens && oauthTokens.access_token) {
       const timeLeft = 5 * 60 * 60 * 1000 - (Date.now() - oauthTokens.created_at);
@@ -253,20 +267,6 @@ class AuthenticationManager {
       console.log(`⏰ Token expires in: ${hoursLeft}h ${minutesLeft}m`);
 
       return oauthTokens.access_token;
-    }
-
-    // Priority 2: Environment variable API key
-    const envToken = process.env.ANTHROPIC_API_KEY;
-    if (envToken) {
-      console.log('🌍 Using ANTHROPIC_API_KEY environment variable');
-      return envToken;
-    }
-
-    // Priority 3: Legacy environment variable
-    const legacyToken = process.env.ANTHROPIC_AUTH_TOKEN;
-    if (legacyToken) {
-      console.log('🌍 Using ANTHROPIC_AUTH_TOKEN environment variable');
-      return legacyToken;
     }
 
     // Priority 4: Stored token (cached from previous manual input)
@@ -291,12 +291,13 @@ class AuthenticationManager {
 ❌ Authentication required!
 
 Choose one of the following options:
-  1. Set API key: export ANTHROPIC_API_KEY=your_api_key_here
-  2. Use OAuth (Claude Code with credits): Retry OAuth flow
-  3. Set legacy key: export ANTHROPIC_AUTH_TOKEN=your_api_key_here
+  1. Set API key (highest priority): export ANTHROPIC_API_KEY=your_api_key_here
+  2. Set legacy key: export ANTHROPIC_AUTH_TOKEN=your_api_key_here
+  3. Use OAuth (Claude Code with credits): Retry OAuth flow
 
 Get your API key from: https://console.anthropic.com
 OAuth provides coding credits and 5-hour token refresh.
+Note: API keys always take priority over OAuth tokens.
       `);
     }
   }
