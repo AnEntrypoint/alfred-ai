@@ -790,6 +790,7 @@ if (args.includes('--help') || args.includes('-h')) {
 Usage:
   alfred                    Start interactive mode
   alfred <request>         Process single request
+  alfred mcp               Run as MCP server (stdio transport)
   alfred --help           Show this help
   alfred --logout          Clear stored authentication
   alfred --version        Show version
@@ -825,6 +826,11 @@ Examples:
 MCP Tools Available in Execute Environment:
   browser_navigate(), browser_click(), browser_snapshot(), browser_screenshot()
   execute() - runs code with access to all MCP tools
+
+MCP Server Mode:
+  Run 'alfred mcp' to start Alfred as an MCP server that other systems can call.
+  Exposes an 'alfred' tool that accepts prompts and executes them in the current directory.
+  Uses stdio transport (JSON-RPC over stdin/stdout) per MCP protocol specification.
 `);
   process.exit(0);
 }
@@ -841,11 +847,179 @@ if (args.includes('--logout')) {
   process.exit(0);
 }
 
-const alfred = new AlfredMCPClient();
-alfred.run(args).catch(error => {
-  console.error('❌ Fatal error:', error);
-  process.exit(1);
-});
+if (args.includes('mcp')) {
+  // MCP Server Mode - provide Alfred as an MCP tool
+  let messageBuffer = '';
+  let isInitialized = false;
+
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', async (chunk) => {
+    messageBuffer += chunk;
+    const lines = messageBuffer.split('\n');
+    messageBuffer = lines.pop(); // Keep incomplete line in buffer
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+
+      try {
+        const message = JSON.parse(line);
+        const response = await handleMCPMessage(message, isInitialized);
+
+        if (message.method === 'initialize') {
+          isInitialized = true;
+        }
+
+        if (response) {
+          process.stdout.write(JSON.stringify(response) + '\n');
+        }
+      } catch (error) {
+        console.error('MCP Error:', error.message);
+        if (message && message.id) {
+          const errorResponse = {
+            jsonrpc: '2.0',
+            id: message.id,
+            error: {
+              code: -32603,
+              message: error.message
+            }
+          };
+          process.stdout.write(JSON.stringify(errorResponse) + '\n');
+        }
+      }
+    }
+  });
+
+  async function handleMCPMessage(message, isInitialized) {
+    if (message.method === 'initialize') {
+      return {
+        jsonrpc: '2.0',
+        id: message.id,
+        result: {
+          protocolVersion: '2025-06-18',
+          capabilities: {
+            tools: {}
+          },
+          serverInfo: {
+            name: 'alfred-ai',
+            version: '5.5.1'
+          }
+        }
+      };
+    }
+
+    if (message.method === 'initialized') {
+      // Notification - no response needed
+      return null;
+    }
+
+    if (!isInitialized && message.method !== 'ping') {
+      throw new Error('Server not initialized');
+    }
+
+    if (message.method === 'tools/list') {
+      return {
+        jsonrpc: '2.0',
+        id: message.id,
+        result: {
+          tools: [{
+            name: 'alfred',
+            description: 'Execute an Alfred AI prompt to solve coding problems, create files, build applications, and perform software development tasks in the current working directory.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                prompt: {
+                  type: 'string',
+                  description: 'The natural language instruction or coding task for Alfred to complete'
+                }
+              },
+              required: ['prompt']
+            }
+          }]
+        }
+      };
+    }
+
+    if (message.method === 'tools/call') {
+      const { name, arguments: args } = message.params;
+
+      if (name !== 'alfred') {
+        throw new Error(`Unknown tool: ${name}`);
+      }
+
+      const prompt = args.prompt;
+      if (!prompt) {
+        throw new Error('prompt parameter is required');
+      }
+
+      // Run Alfred in non-interactive mode
+      const alfred = new AlfredMCPClient();
+      try {
+        await alfred.startMCPClients();
+        const apiKey = await alfred.authManager.getAuthentication();
+        alfred.anthropic = new Anthropic({ apiKey });
+
+        // Capture output
+        let output = '';
+        const originalLog = console.log;
+        const originalError = console.error;
+        console.log = (...args) => { output += args.join(' ') + '\n'; };
+        console.error = (...args) => { output += args.join(' ') + '\n'; };
+
+        await alfred.runAgenticLoop(prompt);
+
+        // Restore console
+        console.log = originalLog;
+        console.error = originalError;
+
+        alfred.cleanup();
+
+        return {
+          jsonrpc: '2.0',
+          id: message.id,
+          result: {
+            content: [{
+              type: 'text',
+              text: output || 'Alfred completed the task successfully.'
+            }],
+            isError: false
+          }
+        };
+      } catch (error) {
+        alfred.cleanup();
+        return {
+          jsonrpc: '2.0',
+          id: message.id,
+          result: {
+            content: [{
+              type: 'text',
+              text: `Alfred encountered an error: ${error.message}`
+            }],
+            isError: true
+          }
+        };
+      }
+    }
+
+    if (message.method === 'ping') {
+      return {
+        jsonrpc: '2.0',
+        id: message.id,
+        result: {}
+      };
+    }
+
+    throw new Error(`Unknown method: ${message.method}`);
+  }
+
+  // MCP server mode - keep listening, don't run normal client code
+} else {
+  // Normal client mode
+  const alfred = new AlfredMCPClient();
+  alfred.run(args).catch(error => {
+    console.error('❌ Fatal error:', error);
+    process.exit(1);
+  });
+}
 
 process.on('SIGINT', () => {
   console.log('\n👋 Interrupted. Cleaning up...');
