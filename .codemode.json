@@ -3,18 +3,9 @@
   "mcpServers": {
     "builtInTools": {
       "command": "node",
-      "args": ["built-in-tools-mcp.js"]
-    },
-    "playwright": {
-      "command": "npx",
       "args": [
-        "-y",
-        "@executeautomation/playwright-mcp-server"
+        "built-in-tools-mcp.js"
       ]
-    },
-    "vexify": {
-      "command": "node",
-      "args": ["vexify-mcp-server.js"]
     }
   }
 }

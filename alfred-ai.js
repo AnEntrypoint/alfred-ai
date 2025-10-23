@@ -515,6 +515,7 @@ class ExecutionManager {
     return new Promise((resolve, reject) => {
       let tempFile;
       const startTime = Date.now();
+      let timeoutTriggered = false;
 
       try {
         // Create temporary file
@@ -556,8 +557,12 @@ class ExecutionManager {
         });
 
         const timer = setTimeout(() => {
+          timeoutTriggered = true;
+          console.error(`[timeout] Execution timeout after ${timeout}ms - killing process PID ${child.pid}`);
           child.kill('SIGKILL');
-          reject(new Error(`Execution timeout after ${timeout}ms`));
+
+          // Don't reject immediately - let the close handler deal with cleanup
+          // This allows async behavior and prevents blocking
         }, timeout);
 
         child.on('close', (code) => {
@@ -582,6 +587,13 @@ class ExecutionManager {
 
           const result = stdout || (stderr ? `Warning: ${stderr}` : 'Execution completed successfully');
           const resultWithTiming = `${result}\n\nTime: ${timeDisplay}`;
+
+          // If timeout was triggered, return timeout message but don't reject
+          if (timeoutTriggered) {
+            console.error(`[timeout result] Process killed after timeout - returning partial output`);
+            resolve(`${resultWithTiming}\n\n⚠️  Process killed due to timeout after ${timeout}ms`);
+            return;
+          }
 
           if (code === 0) {
             resolve(resultWithTiming);
