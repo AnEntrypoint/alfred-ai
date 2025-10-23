@@ -663,6 +663,21 @@ class MarvinMCPServer {
         }
       });
 
+      tools.push({
+        name: 'alfred',
+        description: 'Run Alfred AI agent with full agentic capabilities to accomplish complex tasks. Alfred can use all available tools in an autonomous loop to complete your request.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            prompt: {
+              type: 'string',
+              description: 'The task or request for Alfred to accomplish'
+            }
+          },
+          required: ['prompt']
+        }
+      });
+
       return { tools };
     });
 
@@ -677,6 +692,8 @@ class MarvinMCPServer {
           return await this.handleStatus();
         } else if (name === 'marvin_kill') {
           return await this.handleKill(args);
+        } else if (name === 'alfred') {
+          return await this.handleAlfred(args);
         } else if (name.includes('_')) {
           // Handle delegated MCP tools
           const [serverName, toolName] = name.split('_');
@@ -805,6 +822,38 @@ Available Tools:
     }
   }
 
+  async handleAlfred(args) {
+    try {
+      const { prompt } = args;
+      if (!prompt) {
+        throw new Error('prompt parameter is required');
+      }
+
+      const apiKey = authManager.getApiKey();
+      if (!apiKey) {
+        throw new Error('No API key available for Alfred agent');
+      }
+
+      const output = await runAgenticLoop(prompt, this, apiKey, false);
+
+      return {
+        content: [{
+          type: 'text',
+          text: output || 'Alfred completed the task successfully.'
+        }],
+        isError: false
+      };
+    } catch (error) {
+      return {
+        content: [{
+          type: 'text',
+          text: `Alfred Error: ${error.message}`
+        }],
+        isError: true
+      };
+    }
+  }
+
   async handleRequest(request) {
     const handler = this.handlers.get(request.method);
     if (!handler) {
@@ -913,12 +962,154 @@ process.on('unhandledRejection', (reason, promise) => {
   process.exit(1);
 });
 
-// Start the server
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main().catch(error => {
-    console.error('Failed to start Marvin:', error);
-    process.exit(1);
+// Shared agentic loop function
+async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true) {
+  const Anthropic = (await import('@anthropic-ai/sdk')).default;
+
+  // Get all available tools
+  const toolsResult = await mcpServer.handleRequest({
+    method: 'tools/list',
+    params: {}
   });
+
+  const anthropic = new Anthropic({ apiKey });
+
+  const messages = [{
+    role: 'user',
+    content: taskPrompt
+  }];
+
+  if (verbose) console.error('\n🤖 Agent starting...\n');
+
+  let output = '';
+
+  // Run agentic loop
+  let continueLoop = true;
+  while (continueLoop) {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 8000,
+      tools: toolsResult.tools,
+      messages
+    });
+
+    messages.push({
+      role: 'assistant',
+      content: response.content
+    });
+
+    // Process response
+    let hasToolUse = false;
+    for (const block of response.content) {
+      if (block.type === 'text') {
+        if (verbose) console.log(block.text);
+        output += block.text + '\n';
+      } else if (block.type === 'tool_use') {
+        hasToolUse = true;
+        if (verbose) console.error(`\n🔧 Tool: ${block.name}`);
+
+        try {
+          const result = await mcpServer.handleRequest({
+            method: 'tools/call',
+            params: {
+              name: block.name,
+              arguments: block.input
+            }
+          });
+
+          messages.push({
+            role: 'user',
+            content: [{
+              type: 'tool_result',
+              tool_use_id: block.id,
+              content: JSON.stringify(result.content)
+            }]
+          });
+        } catch (error) {
+          if (verbose) console.error(`❌ Tool error: ${error.message}`);
+          messages.push({
+            role: 'user',
+            content: [{
+              type: 'tool_result',
+              tool_use_id: block.id,
+              content: JSON.stringify({ error: error.message }),
+              is_error: true
+            }]
+          });
+        }
+      }
+    }
+
+    continueLoop = hasToolUse && response.stop_reason === 'tool_use';
+  }
+
+  return output;
+}
+
+// CLI Agent mode - run Anthropic AI agent with the task
+async function runCLIMode(taskPrompt) {
+  console.error('Alfred AI - CLI Mode');
+  console.error('Task:', taskPrompt);
+
+  // Initialize authentication
+  authManager = new AuthManager();
+  try {
+    await authManager.initialize();
+  } catch (err) {
+    console.error('Fatal: Authentication initialization failed');
+    process.exit(1);
+  }
+
+  const authInfo = authManager.getAuthInfo();
+  console.error(`Authentication: ${authInfo.type} - ${authInfo.status}`);
+
+  const apiKey = authManager.getApiKey();
+  if (!apiKey) {
+    console.error('Fatal: No API key available');
+    process.exit(1);
+  }
+
+  // Initialize config for MCP servers
+  try {
+    config = loadConfig();
+  } catch (err) {
+    // If no config, create minimal config
+    config = { config: { mcpServers: {} }, configDir: process.cwd() };
+  }
+
+  mcpManager = new MCPManager();
+  historyManager = new HistoryManager();
+  executionManager = new ExecutionManager();
+
+  const mcpServer = new MarvinMCPServer();
+  await mcpManager.initialize();
+  executionManager.mcpManager = mcpManager;
+
+  await runAgenticLoop(taskPrompt, mcpServer, apiKey, true);
+
+  console.error('\n✅ Task completed\n');
+  mcpManager.shutdown();
+  process.exit(0);
+}
+
+// Start the server or CLI
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const args = process.argv.slice(2);
+
+  // Check for CLI mode: any argument that's not 'mcp'
+  if (args.length > 0 && args[0] !== 'mcp') {
+    const taskPrompt = args.join(' ');
+    runCLIMode(taskPrompt).catch(error => {
+      console.error('Failed to run CLI mode:', error);
+      process.exit(1);
+    });
+  } else {
+    // MCP server mode
+    main().catch(error => {
+      console.error('Failed to start MCP server:', error);
+      process.exit(1);
+    });
+  }
 }
 
 export { MarvinMCPServer, MCPManager, HistoryManager, ExecutionManager };
