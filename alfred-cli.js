@@ -359,7 +359,7 @@ If you complete a task without creating persistent files, YOU HAVE FAILED.
 🎯 WORKFLOW EXAMPLE:
    1. execute() creates Express server → goes to background after 10s
    2. wait_for_logs to efficiently wait for startup logs
-   3. execute() tests the server with Playwright
+   3. Use Playwright MCP tools to test the server
    4. kill_process to stop server and get final logs
 
 🛠️ BEST PRACTICES:
@@ -1065,17 +1065,36 @@ Focus on the user's immediate task. Do not perform any post-completion steps unl
                 }
               } else if (block.name === 'wait_for_logs') {
                 const { note } = block.input;
-                console.log(`\n⏸️  Agent is waiting for logs (60s)${note ? `: ${note}` : ''}...`);
-                console.log(`⏱️  Background processes will continue running and logs will be delivered automatically.\n`);
+                console.log(`\n⏸️  Agent is waiting for logs${note ? `: ${note}` : ''}...`);
+                console.log(`⏱️  Will automatically end when all background processes complete or after 60s timeout.\n`);
 
-                await new Promise(resolve => setTimeout(resolve, 60000));
+                const startTime = Date.now();
+                const maxWaitTime = 60000; // 60 seconds max
+                const checkInterval = 1000; // Check every 1 second
 
+                while (Date.now() - startTime < maxWaitTime) {
+                  if (this.runningProcesses.size === 0) {
+                    // All processes have completed
+                    const elapsed = Math.round((Date.now() - startTime) / 1000);
+                    toolResults.push({
+                      type: 'tool_result',
+                      tool_use_id: block.id,
+                      content: `All background processes completed after ${elapsed}s.\n\n✅ Ready to continue. No background processes running.`
+                    });
+                    break;
+                  }
+                  await new Promise(resolve => setTimeout(resolve, checkInterval));
+                }
+
+                // Timeout reached or processes completed
                 const runningProcessCount = this.runningProcesses.size;
-                toolResults.push({
-                  type: 'tool_result',
-                  tool_use_id: block.id,
-                  content: `Waited 60 seconds. ${runningProcessCount} background process(es) still running.\n\nAny new logs from background processes have been cleared and will be delivered in the next message.\n\n✅ Ready to continue. Check for background process updates above.`
-                });
+                if (runningProcessCount > 0) {
+                  toolResults.push({
+                    type: 'tool_result',
+                    tool_use_id: block.id,
+                    content: `Waited 60 seconds. ${runningProcessCount} background process(es) still running.\n\nAny new logs from background processes have been cleared and will be delivered in the next message.\n\n✅ Ready to continue. Check for background process updates above.`
+                  });
+                }
               }
             }
           }
@@ -1264,7 +1283,7 @@ Authentication:
   💾 Secure local token storage in ~/.alfred/
 
 Examples:
-  alfred "create an express server and test it in playwright"
+  alfred "create an express server and test it with playwright mcp tools"
   alfred "build a REST API with error handling"
   alfred "analyze this codebase and suggest improvements"
 
