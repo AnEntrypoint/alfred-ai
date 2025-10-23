@@ -25,8 +25,7 @@ class AlfredMCPClient {
       console.log(`🔗 Connecting to ${serverName} MCP server...`);
 
       const serverProcess = spawn('npx', serverCommand, {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        shell: true
+        stdio: ['pipe', 'pipe', 'pipe']
       });
 
       serverProcess.on('error', (error) => {
@@ -732,15 +731,21 @@ Remember: Your success is measured by the FILES you create, not just code you ru
 
     for (const [processId, procInfo] of this.runningProcesses.entries()) {
       console.log(`🛑 Stopping background process: ${processId}`);
-      procInfo.process.kill();
+      try {
+        procInfo.process.kill('SIGKILL');
+      } catch (e) {}
     }
 
     if (this.playwrightClient && this.playwrightClient.process) {
-      this.playwrightClient.process.kill();
+      try {
+        this.playwrightClient.process.kill('SIGKILL');
+      } catch (e) {}
     }
 
     if (this.vexifyClient && this.vexifyClient.process) {
-      this.vexifyClient.process.kill();
+      try {
+        this.vexifyClient.process.kill('SIGKILL');
+      } catch (e) {}
     }
 
     this.isRunning = false;
@@ -762,7 +767,7 @@ Remember: Your success is measured by the FILES you create, not just code you ru
     } catch (error) {
       console.error('❌ Alfred error:', error.message);
       this.cleanup();
-      process.exit(1);
+      setTimeout(() => process.exit(1), 100);
     }
   }
 }
