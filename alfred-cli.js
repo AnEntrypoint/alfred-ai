@@ -409,12 +409,46 @@ IMPORTANT MCP STATE MANAGEMENT:
 - For multi-step operations using MCP tools, you can spread across multiple execute() calls`;
   }
 
+  queuePostCompletionInstructions() {
+    const postCompletionPrompt = `
+🚨 MANDATORY POST-COMPLETION WORKFLOW:
+After completing your user's task, you MUST ALWAYS perform these steps in order:
+
+1. UPDATE README.md:
+   - Document what was built, features, installation, and usage
+   - Include file structure and dependencies
+   - This is NOT optional - do it every single time
+
+2. GIT OPERATIONS (if in git repo):
+   - git add .
+   - git commit with descriptive commit message
+   - git push to remote repository
+   - Handle any merge conflicts appropriately
+
+3. DEPLOY (if applicable):
+   - If the project is deployable (web app, API, etc.)
+   - Deploy to appropriate platform (Vercel, Netlify, Heroku, etc.)
+   - Verify deployment success
+
+4. NPM PUBLISH (if npm package):
+   - If you created a package.json with name/version
+   - Update version number if needed
+   - npm publish to make package available
+
+✅ These steps are MANDATORY completion requirements
+✅ Always inform the user what post-completion steps you performed
+✅ Never skip these steps unless user explicitly tells you to stop
+
+Please perform these post-completion steps now.`;
+
+    this.promptQueue.push(postCompletionPrompt);
+    console.log(`\n📋 Post-completion instructions queued for agent\n`);
+  }
+
   async executeCode(code, runtime = 'nodejs', processId = null) {
     processId = processId || `proc_${++this.processCounter}`;
 
-    console.log(`\n⚡ [${processId}] Starting ${runtime} execution...`);
-    console.log(`📂 Working Directory: ${process.cwd()}`);
-    console.log(`⏱️  Execution Model: Immediate (0-10s) → Background (if needed)\n`);
+    console.log(`\n⚡ [${processId}] Starting ${runtime} execution...\n`);
 
     return new Promise((resolve) => {
       let childProcess;
@@ -748,10 +782,10 @@ IMPORTANT MCP STATE MANAGEMENT:
 
     while (continueLoop) {
       iterationCount++;
-      console.log(`\n📝 Agent Iteration ${iterationCount}\n`);
+      console.log(`\n📝 Agent Iteration ${iterationCount}`);
 
       if (this.pendingAgentUpdates && this.pendingAgentUpdates.length > 0) {
-        console.log(`\n🔔 Injecting ${this.pendingAgentUpdates.length} background process update(s) to agent...\n`);
+        console.log(`🔔 Injecting ${this.pendingAgentUpdates.length} background process update(s)`);
 
         const updateMessages = this.pendingAgentUpdates.map(update => {
           const message = `📊 Background Process Update: ${update.processId}\n` +
@@ -777,7 +811,7 @@ IMPORTANT MCP STATE MANAGEMENT:
           max_tokens: 4096,
           system: `You are Alfred, an AI coding assistant. Your PRIMARY GOAL is to create PERSISTENT FILES in the codebase, NOT to execute temporary code.
 
-🚨 MANDATORY FILE-FIRST WORKFLOW:
+MANDATORY FILE-FIRST WORKFLOW:
 Every request MUST follow this order:
 1. FIRST: Write code to FILES using bash (cat > file.js <<'EOF' ... EOF)
 2. SECOND: Verify files with ls -la
@@ -785,12 +819,12 @@ Every request MUST follow this order:
 4. You have FAILED if you don't create persistent files
 
 CRITICAL RULES - NO EXCEPTIONS:
-❌ NEVER execute code without first saving it to files
-❌ NEVER complete a task without creating .js/.html/.css/etc. files
-❌ NEVER think "the user just wants to see output" - they want FILES
-✅ ALWAYS use execute(bash) with heredoc to write files FIRST
-✅ ALWAYS verify file creation with ls -la SECOND
-✅ ALWAYS use execute() to test files THIRD (optional)
+- NEVER execute code without first saving it to files
+- NEVER complete a task without creating .js/.html/.css/etc. files
+- NEVER think "the user just wants to see output" - they want FILES
+- ALWAYS use execute(bash) with heredoc to write files FIRST
+- ALWAYS verify file creation with ls -la SECOND
+- ALWAYS use execute() to test files THIRD (optional)
 
 EXAMPLES:
 Request: "create express server"
@@ -812,49 +846,23 @@ PROGRESS TRACKING:
 
 THE USER NEEDS PERSISTENT FILES. If you skip file creation, YOU HAVE FAILED THE TASK.
 
-🚨 CRITICAL - NO EXTRA SUMMARY FILES ALLOWED:
-❌ NEVER create extra .md files except README.md
-❌ NEVER create docs/ folders or additional documentation files
-❌ NEVER create summary files that just describe what was done
-✅ ALWAYS maintain and update README.md for the project
-✅ ONLY create functional code files (.js, .html, .css, .json, etc.)
-✅ ONLY create files that actually DO something when executed
+CRITICAL - NO EXTRA SUMMARY FILES ALLOWED:
+- NEVER create extra .md files except README.md
+- NEVER create docs/ folders or additional documentation files
+- NEVER create summary files that just describe what was done
+- ALWAYS maintain and update README.md for the project
+- ONLY create functional code files (.js, .html, .css, .json, etc.)
+- ONLY create files that actually DO something when executed
 
 RULE: README.md is REQUIRED and should be updated with project details
 RULE: NO other .md files, documentation, or summaries unless explicitly requested
 
-🚨 MANDATORY POST-COMPLETION WORKFLOW:
-After completing your user's task, you MUST ALWAYS perform these steps in order:
-
-1. UPDATE README.md:
-   - Document what was built, features, installation, and usage
-   - Include file structure and dependencies
-   - This is NOT optional - do it every single time
-
-2. GIT OPERATIONS (if in git repo):
-   - git add .
-   - git commit with descriptive commit message
-   - git push to remote repository
-   - Handle any merge conflicts appropriately
-
-3. DEPLOY (if applicable):
-   - If the project is deployable (web app, API, etc.)
-   - Deploy to appropriate platform (Vercel, Netlify, Heroku, etc.)
-   - Verify deployment success
-
-4. NPM PUBLISH (if npm package):
-   - If you created a package.json with name/version
-   - Update version number if needed
-   - npm publish to make package available
-
-✅ These steps are MANDATORY completion requirements
-✅ Always inform the user what post-completion steps you performed
-✅ Never skip these steps unless user explicitly tells you to stop
+Focus on the user's immediate task. Do not perform any post-completion steps unless explicitly requested.`,
           tools,
-          manageHistory(messages)
+          messages
         });
 
-        console.log(`💭 Agent: ${response.stop_reason}\n`);
+        console.log(`Agent: ${response.stop_reason}`);
 
         messages.push({ role: 'assistant', content: response.content });
 
@@ -863,10 +871,10 @@ After completing your user's task, you MUST ALWAYS perform these steps in order:
 
           for (const block of response.content) {
             if (block.type === 'text') {
-              console.log(`🗣️  ${block.text}\n`);
+              console.log(`Response: ${block.text}\n`);
             } else if (block.type === 'tool_use') {
-              console.log(`🔧 Tool: ${block.name}`);
-              console.log(`📋 Input: ${JSON.stringify(block.input, null, 2)}\n`);
+              console.log(`Tool: ${block.name}`);
+              console.log(`Input: ${JSON.stringify(block.input, null, 2)}\n`);
 
               if (block.name === 'execute') {
                 const { code, runtime = 'nodejs' } = block.input;
@@ -1081,6 +1089,9 @@ After completing your user's task, you MUST ALWAYS perform these steps in order:
               console.log(`\n✨ ${block.text}\n`);
             }
           }
+
+          // Eager queue post-completion instructions
+          this.queuePostCompletionInstructions();
           continueLoop = false;
         } else {
           console.log(`\n⚠️  Unexpected stop reason: ${response.stop_reason}\n`);
