@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Modern weather application with search, forecast, and geolocation features">
+    <meta name="keywords" content="weather, forecast, temperature, climate, search">
+    <meta name="author" content="Weather App Developer">
+    
+    <title>Weather App - Modern Weather Forecast Application</title>
+    
+    <!-- Open Graph Meta Tags -->
+    <meta property="og:title" content="Weather App - Modern Weather Forecast">
+    <meta property="og:description" content="Get current weather and 5-day forecast for any city">
+    <meta property="og:type" content="website">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>☀️</text></svg>">
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="styles.css">
+    
+    <!-- Preconnect to external services -->
+    <link rel="preconnect" href="https://openweathermap.org">
+    <link rel="dns-prefetch" href="https://openweathermap.org">
+    
+    <!-- Theme color for mobile browsers -->
+    <meta name="theme-color" content="#667eea">
+    
+    <!-- Apple touch icon -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Weather App">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Weather App</h1>
+            <p>Get current weather and 5-day forecast for any city</p>
+        </header>
+
+        <main>
+            <!-- Search Component -->
+            <section id="search-container" class="search-section">
+                <!-- Search component will be rendered here -->
+            </section>
+
+            <!-- Current Weather -->
+            <section id="current-weather" class="weather-card">
+                <!-- Current weather component will be rendered here -->
+            </section>
+
+            <!-- Weather Forecast -->
+            <section id="forecast" class="weather-card">
+                <!-- Forecast component will be rendered here -->
+            </section>
+        </main>
+
+        <footer>
+            <p style="text-align: center; color: rgba(255, 255, 255, 0.8); margin-top: 30px; font-size: 0.9rem;">
+                Made with ❤️ using vanilla JavaScript • Weather data from OpenWeatherMap
+            </p>
+        </footer>
+    </div>
+
+    <!-- Scripts -->
+    <!-- Load services first -->
+    <script src="weatherService.js"></script>
+    
+    <!-- Load components next -->
+    <script src="components.js"></script>
+    
+    <!-- Load main app last -->
+    <script src="app.js"></script>
+
+    <!-- Progressive Enhancement - Fallback content -->
+    <noscript>
+        <div style="text-align: center; padding: 50px; background: white; margin: 20px; border-radius: 10px;">
+            <h2>JavaScript Required</h2>
+            <p>This weather application requires JavaScript to function. Please enable JavaScript in your browser settings.</p>
+        </div>
+    </noscript>
+
+    <!-- Service Worker Registration (for PWA support) -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                // In a production app, you would register a real service worker
+                // navigator.serviceWorker.register('/sw.js');
+            });
+        }
+    </script>
+
+    <!-- Analytics and Performance Monitoring (placeholder) -->
+    <script>
+        // Performance monitoring
+        window.addEventListener('load', () => {
+            if ('performance' in window) {
+                const loadTime = performance.timing.loadEventEnd - performance.timing.navigationStart;
+                console.log(`Page load time: ${loadTime}ms`);
+            }
+        });
+    </script>
+</body>
+</html>

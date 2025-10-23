@@ -1,31 +1,54 @@
 {
   "name": "alfred-ai",
-  "version": "5.11.0",
+  "version": "1.0.0",
+  "description": "Alfred AI - A simplified, SDK-free version of codemode using direct MCP client/server communication with automatic OAuth authentication",
+  "main": "alfred-ai.js",
   "type": "module",
-  "description": "Alfred - Autonomous agentic CLI coding assistant. Takes natural language instructions and executes them using LLM + tools.",
-  "main": "alfred-cli.js",
   "bin": {
-    "alfred": "./alfred-cli.js"
+    "alfred-ai": "alfred-ai.js"
   },
   "scripts": {
-    "test": "node -e \"const { AuthenticationManager } = require('./auth-manager.js'); const auth = new AuthenticationManager(); auth.getAuthentication().then(token => { console.log('SUCCESS: Token found:', token?.substring(0, 50)); }).catch(err => { console.log('ERROR:', err.message); });\"",
-    "start": "node alfred-cli.js",
-    "test:gpu": "source /etc/profile.d/gpu-acceleration.sh && playwright test",
-    "playwright:gpu": "source /etc/profile.d/gpu-acceleration.sh && playwright"
+    "start": "node alfred-ai.js",
+    "test": "node test.js",
+    "test:validation": "node validation-test.js"
+  },
+  "files": [
+    "alfred-ai.js",
+    "auth-manager.js",
+    "built-in-tools-mcp.js",
+    "ast-grep-wrapper.js",
+    "ast-error-handling.js",
+    "test.js",
+    "validation-test.js",
+    ".codemode.json",
+    "README.md",
+    "CLAUDE.md"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.5.0",
+    "@mozilla/readability": "^0.6.0",
+    "fast-glob": "^3.3.3",
+    "node-fetch": "^3.3.2",
+    "playwright": "^1.56.1",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "chalk": "^4.1.2"
   },
   "keywords": [
-    "ai",
-    "cli",
-    "assistant",
-    "automation",
-    "coding"
+    "mcp",
+    "claude",
+    "tools",
+    "execution",
+    "code",
+    "sdk-free",
+    "oauth",
+    "anthropic",
+    "alfred-ai"
   ],
-  "author": "Alfred AI",
+  "author": "lanmower",
   "license": "MIT",
-  "dependencies": {
-    "@anthropic-ai/sdk": "^0.67.0",
-    "express": "^5.1.0",
-    "fast-glob": "^3.3.2",
-    "playwright": "^1.56.1"
+  "engines": {
+    "node": ">=14.0.0"
   }
 }

@@ -1,275 +1,152 @@
-# Alfred AI - Your Autonomous Coding Assistant
+# Weather App
 
-**Alfred** is an intelligent, agentic CLI coding assistant powered by Claude Sonnet 4. It takes natural language instructions and autonomously writes and executes code to complete tasks, with Playwright MCP and Vexify MCP tools available in the execution environment.
+A modern, responsive weather application built with vanilla JavaScript that provides current weather conditions and 5-day forecasts for any city worldwide.
 
-## Key Features
+## Features
 
-- **🤖 Agentic Programming**: LLM writes code to accomplish tasks, no hardcoded logic
-- **🎭 Playwright MCP**: Browser automation tools available as functions in execution environment
-- **⚡ Vexify MCP**: Enhanced code execution and AST analysis tools
-- **🔧 Execute Tool**: Agent writes JavaScript/Bash code with MCP tool access
-- **🚀 Iterative Workflow**: Up to 10 iterations to complete complex tasks
-- **💻 Like Claude Code**: Similar agentic workflow but via execute tool
+- 🌤️ **Current Weather Display**: Shows temperature, feels-like temperature, humidity, wind speed, pressure, and visibility
+- 📅 **5-Day Forecast**: Daily weather predictions with temperature ranges and conditions
+- 🔍 **Smart Search**: Autocomplete functionality with city suggestions
+- 📍 **Geolocation Support**: Get weather for your current location (with permission)
+- 🌓 **Dark/Light Theme**: Toggle between light and dark themes
+- 📱 **Responsive Design**: Works perfectly on desktop, tablet, and mobile devices
+- ⚡ **Real-time Updates**: Fast loading and smooth transitions
+- 🔔 **Notifications**: User-friendly success and error messages
+- ⌨️ **Keyboard Shortcuts**: Ctrl/Cmd+K to focus search, Escape to clear
+
+## Technologies Used
+
+- **HTML5**: Semantic markup with accessibility features
+- **CSS3**: Modern styling with gradients, animations, and responsive grid
+- **Vanilla JavaScript**: ES6+ features, no external dependencies
+- **OpenWeatherMap API**: Real weather data (mock data for demo)
+
+## File Structure
+
+```
+weather-app/
+├── index.html              # Main HTML entry point
+├── styles.css              # Complete styling with themes
+├── app.js                  # Main application logic and state management
+├── weatherService.js       # Weather data fetching service
+├── components.js           # Reusable UI components
+├── package.json            # Project configuration
+└── README.md               # This file
+```
 
 ## Installation
 
-```bash
-npm install -g alfred-ai@5.0.0
-```
-
-Or use directly with npx:
-
-```bash
-npx alfred-ai@latest "your task here"
-```
-
-## Quick Start
-
-```bash
-# Set your Anthropic API key (required)
-export ANTHROPIC_API_KEY=your-api-key-here
-
-# Run Alfred with a task
-npx alfred-ai@latest "create an express server on port 3000"
-
-# Complex tasks with Playwright
-npx alfred-ai@latest "create an express server and test it in playwright mcp"
-```
+1. Clone or download the project files
+2. Install dependencies (if needed):
+   ```bash
+   npm install
+   ```
 
 ## Usage
 
-Alfred takes natural language instructions and autonomously figures out how to complete them:
+### Development Mode
 
+Start the development server:
 ```bash
-# Simple file operations
-alfred "create a README with project documentation"
-
-# Install dependencies and create code
-alfred "install express and create a REST API with CRUD endpoints"
-
-# Web development with testing
-alfred "create a React component with tests and build it"
-
-# Browser automation
-alfred "start a web server and take screenshots of the homepage"
+npm run dev
 ```
 
-### Available Tools
-
-Alfred has access to these tools when executing tasks:
-
-**Built-in Tools:**
-- `Edit({ file_path, old_string, new_string, replace_all })` - Edit files
-- `Glob({ pattern, path })` - Find files by pattern
-- `Grep({ pattern, path, output_mode, glob, type })` - Search file contents
-- `Bash({ command, description, timeout })` - Execute shell commands
-- `LS({ path })` - List directory contents
-- `Read({ file_path })` - Read file contents
-- `Write({ file_path, content })` - Write/create files
-
-**Playwright MCP Tools:**
-- `browser_navigate({ url })` - Navigate to URL
-- `browser_snapshot()` - Take page snapshot
-- `browser_click({ selector })` - Click element
-- `browser_fill({ selector, value })` - Fill form field
-- `browser_evaluate({ script })` - Execute JavaScript in browser
-- `browser_close()` - Close browser
-
-**Vexify Tools:** (Additional MCP tools from vexify-mcp-server)
-
-## How It Works
-
-1. You provide a natural language task
-2. Alfred starts necessary MCP servers (Playwright, Vexify)
-3. Alfred calls an LLM (Claude) with your task and available tools
-4. The LLM writes JavaScript code using the tools
-5. Alfred executes the code in a sandboxed environment
-6. Results are fed back to the LLM
-7. The process continues until the task is complete (max 10 iterations)
-
-## Architecture
-
-### Components
-
-1. **cli.js**: Agentic CLI entry point with LLM loop
-2. **index.js**: MCP server mode (for integration with other MCP clients)
-3. **agentic-mode.js**: Code execution environment with tool injection
-4. **vexify-mcp-server.js**: Additional MCP tools
-5. **built-in-tools-mcp.js**: Built-in tool definitions
-
-### Key Features
-
-- **Agentic Loop**: Autonomous task completion with LLM decision-making
-- **Multi-Provider Support**: Uses Vercel AI SDK for provider flexibility
-- **Tool Injection**: All tools available as async functions in execution context
-- **MCP Integration**: Spawns and manages MCP server processes
-- **Error Handling**: Automatic retry with error feedback to LLM
-- **Iteration Limiting**: Prevents infinite loops (max 10 iterations)
-
-## Configuration
-
-### Environment Variables
-
-**Authentication:**
-- `ANTHROPIC_AUTH_TOKEN` (required): Your Anthropic API authentication token
-- `ANTHROPIC_API_KEY` (alternative): Standard Anthropic API key (fallback if AUTH_TOKEN not set)
-- `ANTHROPIC_BASE_URL` (optional): Custom API endpoint (e.g., `https://api.z.ai/api/anthropic`)
-
-**Model Selection:**
-- `ANTHROPIC_DEFAULT_HAIKU_MODEL` (optional): Override default Haiku model (default: `claude-haiku-4-5-20251001`)
-- `ANTHROPIC_DEFAULT_SONNET_MODEL` (optional): Override default Sonnet model (default: `claude-sonnet-4-5-20250929`)
-- `ANTHROPIC_DEFAULT_OPUS_MODEL` (optional): Override default Opus model (default: `claude-opus-4-1-20250805`)
-
-**Example:**
+Or start on a specific port:
 ```bash
-export ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic
-export ANTHROPIC_AUTH_TOKEN=your-token-here
-export ANTHROPIC_DEFAULT_SONNET_MODEL=claude-sonnet-4-5-20250929
+npm start
 ```
 
-### MCP Servers
+### Direct Access
 
-Alfred automatically starts these MCP servers:
-- **Vexify**: Custom MCP tools (bundled)
-- **Playwright**: Browser automation via `@executeautomation/playwright-mcp-server`
+You can also open `index.html` directly in a web browser, but some features may be limited due to CORS restrictions.
 
-## Examples
+## Components
 
-### Create and Test Express Server
+### WeatherService
+Handles all weather data fetching with mock data for demonstration. In production, replace with real API calls to OpenWeatherMap.
 
-```bash
-alfred "install express, create a server with /api/users endpoint, start it on port 3000, and test it with playwright"
-```
+### CurrentWeather
+Displays current weather conditions with:
+- Temperature and "feels like" temperature
+- Weather description and icon
+- Detailed metrics (humidity, wind, pressure, visibility)
 
-Alfred will:
-1. Run `npm install express`
-2. Create `server.js` with Express app
-3. Start the server in the background
-4. Navigate to `http://localhost:3000/api/users` with Playwright
-5. Verify the endpoint works
-6. Report success
+### WeatherForecast
+Shows 5-day forecast with:
+- Daily temperature ranges
+- Weather conditions and icons
+- Additional details (humidity, wind speed)
 
-### Build a Project
+### SearchComponent
+Provides city search functionality with:
+- Autocomplete suggestions
+- Keyboard shortcuts support
+- Geolocation integration
 
-```bash
-alfred "create a package.json, install dependencies, and run the build"
-```
+## Customization
 
-Alfred will:
-1. Create `package.json` with appropriate config
-2. Run `npm install`
-3. Execute build command
-4. Report any errors and fix them
+### API Integration
+To use real weather data:
 
-### File Operations
+1. Sign up at [OpenWeatherMap](https://openweathermap.org/api)
+2. Get your API key
+3. Replace the mock data in `weatherService.js` with actual API calls:
+   ```javascript
+   const response = await fetch(`${this.baseUrl}/weather?q=${city}&appid=${YOUR_API_KEY}&units=metric`);
+   ```
 
-```bash
-alfred "find all JavaScript files, search for TODO comments, and create a summary"
-```
+### Theming
+The app includes a built-in dark/light theme toggle. Customize colors in `styles.css` under the `/* Dark Theme */` section.
 
-Alfred will:
-1. Use `Glob` to find all `.js` files
-2. Use `Grep` to search for TODO comments
-3. Use `Write` to create `TODO_SUMMARY.md`
+### Adding Cities
+Add more default cities to the mock data in `weatherService.js` by extending the `mockData` object.
 
-## Best Practices
+## Browser Support
 
-1. **Be specific**: Clearer instructions lead to better results
-2. **Set authentication**: Always set `ANTHROPIC_AUTH_TOKEN` before running
-3. **Monitor output**: Alfred logs all its actions and reasoning
-4. **Background servers**: Alfred can start and manage background processes
-5. **Iteration limits**: If a task needs more than 10 iterations, break it into smaller tasks
+- Chrome/Chromium 60+
+- Firefox 55+
+- Safari 12+
+- Edge 79+
 
-## Troubleshooting
+## Performance Features
 
-### Authentication Not Set
-```bash
-export ANTHROPIC_AUTH_TOKEN=your-token-here
-# Or for standard API key:
-export ANTHROPIC_API_KEY=your-key-here
-```
+- Lazy loading of weather data
+- Efficient DOM updates
+- Optimized CSS animations
+- Minimal bundle size (~30KB total)
+- Service worker ready (commented in HTML)
 
-### Playwright Issues
-Alfred automatically installs Playwright browsers when needed. If you see browser-related errors, ensure you have sufficient disk space.
+## Accessibility
 
-### Execution Timeouts
-For long-running tasks, Alfred uses appropriate timeouts. If a task times out, try breaking it into smaller steps.
+- Semantic HTML5 markup
+- ARIA-friendly structure
+- Keyboard navigation support
+- High contrast themes
+- Screen reader compatible
 
-## Development
+## Contributing
 
-### Run Locally
-
-```bash
-git clone <repo>
-cd marvin
-npm install
-
-# Run CLI
-node cli.js "your task"
-
-# Run MCP server mode
-node index.js
-```
-
-### Testing
-
-```bash
-npm test
-```
-
-## Dependencies
-
-- `ai` - Vercel AI SDK for multi-provider LLM support
-- `@ai-sdk/anthropic` - Anthropic provider for Vercel AI SDK
-- `@modelcontextprotocol/sdk` - MCP protocol implementation
-- `fast-glob` - Fast file pattern matching
-- `@mozilla/readability` - Web content extraction
-- `node-fetch` - HTTP requests
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
 
 ## License
 
-MIT
+MIT License - feel free to use this project for personal or commercial purposes.
 
-## Acknowledgments
+## Demo
 
-- Uses [Anthropic Claude](https://anthropic.com) for AI capabilities
-- Built on [Model Context Protocol](https://modelcontextprotocol.io)
-- Playwright integration via [@executeautomation/playwright-mcp-server](https://www.npmjs.com/package/@executeautomation/playwright-mcp-server)
-- Multi-provider support via [Vercel AI SDK](https://sdk.vercel.ai)
+Open the application in your browser and try searching for cities like:
+- New York
+- London  
+- Tokyo
+- Paris
+- Berlin
+
+The app will display current weather conditions and a 5-day forecast for any location.
 
 ---
 
-**Alfred: "Your trusted coding assistant, at your service."**
-
-## Authentication Setup
-
-Alfred requires an Anthropic API key to function. Set it up using one of these methods:
-
-### Method 1: Environment Variable (Recommended)
-```bash
-export ANTHROPIC_API_KEY=sk-ant-your-api-key-here
-```
-
-### Method 2: Add to Shell Profile
-```bash
-echo 'export ANTHROPIC_API_KEY=sk-ant-your-api-key-here' >> ~/.bashrc
-source ~/.bashrc
-```
-
-### Method 3: Use .env File
-```bash
-cp .env.example .env
-# Edit .env and add your API key
-source <(grep -v '^#' .env | sed 's/^/export /')
-```
-
-Get your API key from: https://console.anthropic.com/settings/keys
-
-### Testing Authentication
-```bash
-# Check if key is set
-echo $ANTHROPIC_API_KEY
-
-# Test Alfred
-alfred "say hello"
-```
+Made with ❤️ using vanilla JavaScript
