@@ -390,15 +390,31 @@ If you complete a task without creating persistent files, YOU HAVE FAILED.
    - Escape special characters properly
    - Always verify file creation: ls -la filename
 
-🎭 PLAYWRIGHT MCP TOOLS (Browser Automation - Use in execute()):
+🎭 PLAYWRIGHT MCP TOOLS (Browser Automation - ONLY in execute(nodejs)):
 ${playwrightTools}
 
-Usage: Call these functions ONLY within execute(nodejs) code blocks. These are NOT globals - they're injected by the MCP layer at runtime.
-Examples:
-  - await mcp__plugin_glootie_cc_playwright__browser_navigate('http://localhost:3000')
-  - await mcp__plugin_glootie_cc_playwright__browser_click('button[class="test"]')
-  - await mcp__plugin_glootie_cc_playwright__browser_screenshot()
-  - const snapshot = await mcp__plugin_glootie_cc_playwright__browser_snapshot()
+⚠️  MCP TOOLS - CRITICAL USAGE RULES:
+1. PLAYWRIGHT TOOLS ARE ONLY AVAILABLE INSIDE execute(nodejs) BLOCKS
+2. They are AUTOMATICALLY INJECTED by the MCP layer when execute() runs
+3. You CANNOT import or require them - they just exist in the environment
+4. Use FULL QUALIFIED NAME: mcp__plugin_glootie_cc_playwright__[tool_name]
+
+✅ CORRECT USAGE - FULL CONCRETE EXAMPLE:
+execute(nodejs) with this code:
+---
+(async () => {
+  await mcp__plugin_glootie_cc_playwright__browser_navigate('http://localhost:3000');
+  await new Promise(r => setTimeout(r, 2000));
+  const snapshot = await mcp__plugin_glootie_cc_playwright__browser_snapshot();
+  console.log('Page loaded');
+})();
+---
+
+❌ WRONG - DON'T DO THIS:
+- Don't try: const { browser_navigate } = require('@modelcontextprotocol/sdk');
+- Don't try: await browser_navigate('http://...');  (missing mcp__ prefix)
+- Don't try: await mcp__plugin_glootie_cc_playwright__browser_navigate(...) OUTSIDE execute()
+- Don't try to use these tools in bash/terminal - they only work in nodejs
 
 🔧 VEXIFY MCP TOOLS (Code Execution & Testing):
 ${vexifyTools}
@@ -406,23 +422,11 @@ ${vexifyTools}
 🤖 ALFRED MCP TOOLS (Recursive AI Agent):
 ${alfredTools}
 
-⚠️  CRITICAL - HOW MCP TOOLS WORK:
-- MCP tools are ONLY available within execute() - they cannot be called as standalone tools
-- When you call execute(nodejs), the MCP layer injects tool functions into the environment
-- You must use the full qualified name: mcp__plugin_glootie_cc_[tool_type]__[tool_name]
-- Playwright tools work with persistent browser sessions across execute() calls
-- Each execute() call gets a fresh process, but MCP state persists
-
-✅ CORRECT - Using MCP tools in execute():
-execute(nodejs) with code that calls: await mcp__plugin_glootie_cc_playwright__browser_navigate('http://...')
-
-❌ WRONG - Trying to use MCP tools outside execute():
-Don't try to call MCP functions from the main environment or expect them to work in isolation
-
 STATE MANAGEMENT:
 - MCP tool servers (Playwright, Vexify, Alfred) maintain persistent state between execute() calls
 - Browser sessions, processes, and other resources persist across multiple execute() calls
-- Each execute() spawns a fresh Node.js/Bash process, but MCP servers remain connected`;
+- Each execute() spawns a fresh Node.js/Bash process, but MCP servers remain connected
+- Call execute(nodejs) multiple times to interact with same browser session`;
   }
 
   queuePostCompletionInstructions() {
