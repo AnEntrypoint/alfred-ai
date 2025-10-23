@@ -733,18 +733,27 @@ Remember: Your success is measured by the FILES you create, not just code you ru
       console.log(`🛑 Stopping background process: ${processId}`);
       try {
         procInfo.process.kill('SIGKILL');
+        procInfo.process.stdin?.destroy();
+        procInfo.process.stdout?.destroy();
+        procInfo.process.stderr?.destroy();
       } catch (e) {}
     }
 
     if (this.playwrightClient && this.playwrightClient.process) {
       try {
         this.playwrightClient.process.kill('SIGKILL');
+        this.playwrightClient.process.stdin?.destroy();
+        this.playwrightClient.process.stdout?.destroy();
+        this.playwrightClient.process.stderr?.destroy();
       } catch (e) {}
     }
 
     if (this.vexifyClient && this.vexifyClient.process) {
       try {
         this.vexifyClient.process.kill('SIGKILL');
+        this.vexifyClient.process.stdin?.destroy();
+        this.vexifyClient.process.stdout?.destroy();
+        this.vexifyClient.process.stderr?.destroy();
       } catch (e) {}
     }
 
