@@ -81,6 +81,7 @@ source ~/zlaude && npx alfred-ai@latest "task"
 3. **Authentication**: Supports both `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` environment variables
 4. **Base URL**: Respects `ANTHROPIC_BASE_URL` for custom API endpoints (e.g., z.ai)
 5. **Dual Mode Detection**: Any CLI argument except "mcp" triggers CLI mode
+6. **Entry Point Detection**: Uses `fileURLToPath()` and `resolve()` for robust main module detection - required for npx compatibility
 
 ### Key Learnings
 - The Anthropic SDK expects `input_schema` in tool definitions, not `inputSchema`
