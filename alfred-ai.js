@@ -421,6 +421,24 @@ class ExecutionManager {
     this.nextExecId = 0;
     this.runningExecutions = new Map();
     this.finalPromptCalled = false;
+    this.eagerPrompts = [];
+  }
+
+  queueEagerPrompt(execId, message, logs) {
+    const prompt = {
+      execId,
+      message,
+      logs,
+      timestamp: Date.now()
+    };
+    this.eagerPrompts.push(prompt);
+    console.error(`[Eager Prompt Queued] ${execId}: ${message}`);
+  }
+
+  getQueuedPrompts() {
+    const prompts = this.eagerPrompts;
+    this.eagerPrompts = [];
+    return prompts;
   }
 
   callFinalPrompt() {
@@ -450,20 +468,8 @@ class ExecutionManager {
     const execId = `exec_${this.nextExecId++}`;
     console.error(`[Execution Manager] Starting execution ${execId}`);
 
-    // Set up 60-second progress notification
-    const sixtySecondTimer = setTimeout(() => {
-      console.error('\n' + '='.repeat(60));
-      console.error('[60-SECOND NOTIFICATION] Execution still running...');
-      console.error(`[60-SECOND NOTIFICATION] Execution ID: ${execId}`);
-      console.error(`[60-SECOND NOTIFICATION] Runtime: ${runtime}`);
-      console.error(`[60-SECOND NOTIFICATION] Code length: ${code.length} bytes`);
-      console.error('[60-SECOND NOTIFICATION] Check logs above for execution output');
-      console.error('='.repeat(60) + '\n');
-    }, 60000);
-
     try {
-      const result = await this.executeCode(code, runtime, timeout);
-      clearTimeout(sixtySecondTimer);
+      const result = await this.executeCode(code, runtime, timeout, execId);
 
       // Store in history
       historyManager.recordExecute(
@@ -486,8 +492,6 @@ class ExecutionManager {
         execId
       };
     } catch (error) {
-      clearTimeout(sixtySecondTimer);
-
       // Store error in history
       historyManager.recordExecute(
         { code: this.compactCode(code), runtime },
@@ -511,22 +515,21 @@ class ExecutionManager {
     }
   }
 
-  async executeCode(code, runtime, timeout) {
+  async executeCode(code, runtime, timeout, execId) {
     return new Promise((resolve, reject) => {
       let tempFile;
       const startTime = Date.now();
       let timeoutTriggered = false;
+      let lastLogSize = 0;
+      let accumulatedStdout = '';
+      let accumulatedStderr = '';
 
       try {
-        // Create temporary file
-        // (tmpdir and uuidv4 are now imported at the top)
-
         const extension = this.getFileExtension(runtime);
         tempFile = join(tmpdir(), `alfred-ai-${uuidv4()}${extension}`);
 
         fs.writeFileSync(tempFile, code);
 
-        // Determine execution command - pass both runtime and filepath
         const command = this.getExecutionCommand(runtime, tempFile);
 
         console.error(`[execution] Spawning ${command.cmd} with args: ${JSON.stringify(command.args)}`);
@@ -540,11 +543,11 @@ class ExecutionManager {
 
         let stdout = '';
         let stderr = '';
-        let lastOutputTime = startTime;
 
         child.stdout.on('data', (data) => {
           const output = data.toString();
           stdout += output;
+          accumulatedStdout += output;
           console.error(`[stdout hook] Received ${output.length} bytes: ${output.substring(0, 100)}${output.length > 100 ? '...' : ''}`);
           process.stderr.write(output);
         });
@@ -552,21 +555,59 @@ class ExecutionManager {
         child.stderr.on('data', (data) => {
           const output = data.toString();
           stderr += output;
+          accumulatedStderr += output;
           console.error(`[stderr hook] Received ${output.length} bytes: ${output.substring(0, 100)}${output.length > 100 ? '...' : ''}`);
           process.stderr.write(output);
         });
 
         const timer = setTimeout(() => {
           timeoutTriggered = true;
-          console.error(`[timeout] Execution timeout after ${timeout}ms - killing process PID ${child.pid}`);
-          child.kill('SIGKILL');
+          console.error(`[timeout] Execution timeout after ${timeout}ms - process continues in background (PID ${child.pid})`);
 
-          // Don't reject immediately - let the close handler deal with cleanup
-          // This allows async behavior and prevents blocking
+          // Hand over logs to agent immediately via eager prompt
+          const logs = `${stdout}${stderr ? '\nSTDERR:\n' + stderr : ''}`;
+          this.queueEagerPrompt(
+            execId,
+            `⏱️ Execution timeout after ${timeout}ms. Process (PID ${child.pid}) still running in background. Logs cleared and handed to you below. Watch for progress updates every 60 seconds.`,
+            logs
+          );
+
+          // Reset logs for background monitoring
+          lastLogSize = 0;
+          accumulatedStdout = '';
+          accumulatedStderr = '';
+
+          // Start 60-second notification timer for background execution
+          const progressTimer = setInterval(() => {
+            if (!child.exitCode && !child.killed) {
+              const newLogs = `${accumulatedStdout}${accumulatedStderr ? '\nSTDERR:\n' + accumulatedStderr : ''}`;
+              if (newLogs.length > lastLogSize) {
+                this.queueEagerPrompt(
+                  execId,
+                  `📊 Process still running (PID ${child.pid}). New logs received. Watch for completion.`,
+                  newLogs
+                );
+                lastLogSize = newLogs.length;
+                accumulatedStdout = '';
+                accumulatedStderr = '';
+              }
+            } else {
+              clearInterval(progressTimer);
+            }
+          }, 60000);
+
+          // Store timer for cleanup
+          child._progressTimer = progressTimer;
+
+          // Don't kill process - let it continue running in background
+          // User instructions: "watch and kill it" - process continues until completion
         }, timeout);
 
         child.on('close', (code) => {
           clearTimeout(timer);
+          if (child._progressTimer) {
+            clearInterval(child._progressTimer);
+          }
 
           const endTime = Date.now();
           const duration = endTime - startTime;
@@ -588,10 +629,15 @@ class ExecutionManager {
           const result = stdout || (stderr ? `Warning: ${stderr}` : 'Execution completed successfully');
           const resultWithTiming = `${result}\n\nTime: ${timeDisplay}`;
 
-          // If timeout was triggered, return timeout message but don't reject
+          // If timeout was triggered, hand over final logs via eager prompt
           if (timeoutTriggered) {
-            console.error(`[timeout result] Process killed after timeout - returning partial output`);
-            resolve(`${resultWithTiming}\n\n⚠️  Process killed due to timeout after ${timeout}ms`);
+            console.error(`[process end] Final logs being handed to agent`);
+            this.queueEagerPrompt(
+              execId,
+              `✅ Background process (PID ${child.pid}) completed with exit code ${code}. Final logs below.`,
+              `${stdout}${stderr ? '\nSTDERR:\n' + stderr : ''}`
+            );
+            resolve(`${resultWithTiming}\n\n⚠️  Process ran in background after timeout (${timeout}ms). Final logs queued.`);
             return;
           }
 
@@ -604,6 +650,9 @@ class ExecutionManager {
 
         child.on('error', (error) => {
           clearTimeout(timer);
+          if (child._progressTimer) {
+            clearInterval(child._progressTimer);
+          }
 
           // Cleanup temp file
           try {
