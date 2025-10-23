@@ -26,6 +26,14 @@ test.js
 *-test.js
 test-*.js
 *.test.js
+test-py-file.py
+
+# Development/debug files
+code-mode.js
+marvin.js
+example-usage.md
+web-interface-test-report.md
+web-interface.html
 
 # Temporary files
 *.tmp
