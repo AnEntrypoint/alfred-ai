@@ -397,15 +397,15 @@ ${playwrightTools}
 1. PLAYWRIGHT TOOLS ARE ONLY AVAILABLE INSIDE execute(nodejs) BLOCKS
 2. They are AUTOMATICALLY INJECTED by the MCP layer when execute() runs
 3. You CANNOT import or require them - they just exist in the environment
-4. Use FULL QUALIFIED NAME: mcp__plugin_glootie_cc_playwright__[tool_name]
+4. Use FULL QUALIFIED NAME with DASHES: mcp__plugin_glootie-cc_playwright__[tool_name]
 
 ✅ CORRECT USAGE - FULL CONCRETE EXAMPLE:
 execute(nodejs) with this code:
 ---
 (async () => {
-  await mcp__plugin_glootie_cc_playwright__browser_navigate('http://localhost:3000');
+  await mcp__plugin_glootie-cc_playwright__browser_navigate('http://localhost:3000');
   await new Promise(r => setTimeout(r, 2000));
-  const snapshot = await mcp__plugin_glootie_cc_playwright__browser_snapshot();
+  const snapshot = await mcp__plugin_glootie-cc_playwright__browser_snapshot();
   console.log('Page loaded');
 })();
 ---
@@ -413,7 +413,8 @@ execute(nodejs) with this code:
 ❌ WRONG - DON'T DO THIS:
 - Don't try: const { browser_navigate } = require('@modelcontextprotocol/sdk');
 - Don't try: await browser_navigate('http://...');  (missing mcp__ prefix)
-- Don't try: await mcp__plugin_glootie_cc_playwright__browser_navigate(...) OUTSIDE execute()
+- Don't try: await mcp__plugin_glootie_cc_playwright__... (wrong - use DASHES not underscores after glootie)
+- Don't try: await mcp__plugin_glootie-cc_playwright__browser_navigate(...) OUTSIDE execute()
 - Don't try to use these tools in bash/terminal - they only work in nodejs
 
 🔧 VEXIFY MCP TOOLS (Code Execution & Testing):
