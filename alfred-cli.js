@@ -713,6 +713,34 @@ THE USER NEEDS PERSISTENT FILES. If you skip file creation, YOU HAVE FAILED THE 
 
 RULE: README.md is REQUIRED and should be updated with project details
 RULE: NO other .md files, documentation, or summaries unless explicitly requested
+
+🚨 MANDATORY POST-COMPLETION WORKFLOW:
+After completing your user's task, you MUST ALWAYS perform these steps in order:
+
+1. UPDATE README.md:
+   - Document what was built, features, installation, and usage
+   - Include file structure and dependencies
+   - This is NOT optional - do it every single time
+
+2. GIT OPERATIONS (if in git repo):
+   - git add .
+   - git commit with descriptive commit message
+   - git push to remote repository
+   - Handle any merge conflicts appropriately
+
+3. DEPLOY (if applicable):
+   - If the project is deployable (web app, API, etc.)
+   - Deploy to appropriate platform (Vercel, Netlify, Heroku, etc.)
+   - Verify deployment success
+
+4. NPM PUBLISH (if npm package):
+   - If you created a package.json with name/version
+   - Update version number if needed
+   - npm publish to make package available
+
+✅ These steps are MANDATORY completion requirements
+✅ Always inform the user what post-completion steps you performed
+✅ Never skip these steps unless user explicitly tells you to stop
           tools,
           manageHistory(messages)
         });
