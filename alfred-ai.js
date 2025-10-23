@@ -520,6 +520,7 @@ class ExecutionManager {
       let tempFile;
       const startTime = Date.now();
       let timeoutTriggered = false;
+      let promiseResolved = false;
       let lastLogSize = 0;
       let accumulatedStdout = '';
       let accumulatedStderr = '';
@@ -564,13 +565,18 @@ class ExecutionManager {
           timeoutTriggered = true;
           console.error(`[timeout] Execution timeout after ${timeout}ms - process continues in background (PID ${child.pid})`);
 
-          // Hand over logs to agent immediately via eager prompt
+          // Immediately resolve the promise so agent can continue
           const logs = `${stdout}${stderr ? '\nSTDERR:\n' + stderr : ''}`;
-          this.queueEagerPrompt(
-            execId,
-            `⏱️ Execution timeout after ${timeout}ms. Process (PID ${child.pid}) still running in background. Logs cleared and handed to you below. Watch for progress updates every 60 seconds.`,
-            logs
-          );
+          const timeoutMessage = `⏱️ Execution timeout after ${timeout}ms. Process (PID ${child.pid}) continues in background. Logs below. Updates every 60s.`;
+
+          // Queue eager prompt for agent awareness
+          this.queueEagerPrompt(execId, timeoutMessage, logs);
+
+          // Resolve immediately with timeout message so agent can continue working
+          if (!promiseResolved) {
+            promiseResolved = true;
+            resolve(`${timeoutMessage}\n\n${logs}\n\nTime: ${((Date.now() - startTime) / 1000).toFixed(2)}s`);
+          }
 
           // Reset logs for background monitoring
           lastLogSize = 0;
@@ -584,7 +590,7 @@ class ExecutionManager {
               if (newLogs.length > lastLogSize) {
                 this.queueEagerPrompt(
                   execId,
-                  `📊 Process still running (PID ${child.pid}). New logs received. Watch for completion.`,
+                  `📊 Background process (PID ${child.pid}) still running. New output received.`,
                   newLogs
                 );
                 lastLogSize = newLogs.length;
@@ -593,6 +599,12 @@ class ExecutionManager {
               }
             } else {
               clearInterval(progressTimer);
+              // Final notification when process completes
+              this.queueEagerPrompt(
+                execId,
+                `✅ Background process (PID ${child.pid}) completed.`,
+                `${stdout}${stderr ? '\nSTDERR:\n' + stderr : ''}`
+              );
             }
           }, 60000);
 
@@ -637,14 +649,18 @@ class ExecutionManager {
               `✅ Background process (PID ${child.pid}) completed with exit code ${code}. Final logs below.`,
               `${stdout}${stderr ? '\nSTDERR:\n' + stderr : ''}`
             );
-            resolve(`${resultWithTiming}\n\n⚠️  Process ran in background after timeout (${timeout}ms). Final logs queued.`);
+            // Don't resolve again - timeout already resolved the promise
             return;
           }
 
-          if (code === 0) {
-            resolve(resultWithTiming);
-          } else {
-            reject(new Error(`Execution failed with code ${code}: ${stderr || stdout}\n\nTime: ${timeDisplay}`));
+          // Only resolve if not already resolved by timeout
+          if (!promiseResolved) {
+            promiseResolved = true;
+            if (code === 0) {
+              resolve(resultWithTiming);
+            } else {
+              reject(new Error(`Execution failed with code ${code}: ${stderr || stdout}\n\nTime: ${timeDisplay}`));
+            }
           }
         });
 
@@ -1053,6 +1069,11 @@ Available Tools:
 async function initializeHooks() {
   console.error('[Hooks] Initializing system hooks...');
 
+  // Get the actual working directory where the command was invoked
+  // This ensures hooks run in the user's directory, not the npm/npx cache
+  const hookWorkingDir = process.cwd();
+  console.error(`[Hooks] Running hooks in working directory: ${hookWorkingDir}`);
+
   // Hook 1: Thorns hook
   try {
     const thornsOutput = await new Promise((resolve, reject) => {
@@ -1064,7 +1085,7 @@ async function initializeHooks() {
       }, 10000);
 
       const child = spawn('npx', ['-y', 'mcp-thorns@latest'], {
-        cwd: process.cwd(),
+        cwd: hookWorkingDir,
         stdio: ['ignore', 'pipe', 'pipe'],
         shell: true
       });
@@ -1104,7 +1125,7 @@ async function initializeHooks() {
       }, 10000);
 
       const child = spawn('curl', ['-s', 'https://raw.githubusercontent.com/AnEntrypoint/glootie-cc/refs/heads/master/start.md'], {
-        cwd: process.cwd(),
+        cwd: hookWorkingDir,
         stdio: ['ignore', 'pipe', 'pipe']
       });
 
@@ -1143,7 +1164,7 @@ async function initializeHooks() {
       }, 10000);
 
       const child = spawn('npx', ['-y', 'wfgy@latest', 'hook'], {
-        cwd: process.cwd(),
+        cwd: hookWorkingDir,
         stdio: ['ignore', 'pipe', 'pipe'],
         shell: true
       });
