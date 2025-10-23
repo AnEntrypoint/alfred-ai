@@ -182,6 +182,41 @@ class AlfredMCPClient {
 
     return `Execute JavaScript or Bash code in the current working directory (/mnt/c/dev/test123 or equivalent).
 
+🚨 CRITICAL WORKFLOW - FILE CREATION IS MANDATORY:
+
+Your PRIMARY GOAL is to create PERSISTENT FILES in the codebase, NOT just execute temporary code.
+
+MANDATORY WORKFLOW FOR ALL REQUESTS:
+1. FIRST: Write code to FILES using bash commands (cat with heredoc, echo, etc.)
+2. SECOND: Verify files exist with ls -la
+3. THIRD (optional): Test the files by executing them
+4. NEVER skip step 1 - files MUST be created before you're done
+
+EXAMPLES OF CORRECT WORKFLOW:
+
+Request: "create an express server"
+✅ CORRECT:
+  Step 1: execute(bash) - Write server.js using cat > server.js <<'EOF' ... EOF
+  Step 2: execute(bash) - Verify with ls -la server.js
+  Step 3: execute(bash) - npm init -y and npm install express
+  Step 4 (optional): execute(nodejs) - node server.js to test
+
+❌ WRONG:
+  execute(nodejs) - Just run express server code without saving to files
+
+Request: "implement xstate compute engine"
+✅ CORRECT:
+  Step 1: execute(bash) - Write state-machine.js, executor.js, etc. to FILES
+  Step 2: execute(bash) - Verify files with ls -la *.js
+  Step 3: execute(bash) - npm install xstate
+  Step 4 (optional): execute(nodejs) - Run tests to verify
+
+❌ WRONG:
+  execute(nodejs) - Just run xstate code without creating persistent files
+
+THE USER NEEDS FILES, NOT TEMPORARY EXECUTION RESULTS.
+If you complete a task without creating persistent files, YOU HAVE FAILED.
+
 🔄 EXECUTION MODEL - READ THIS CAREFULLY:
 
 1. IMMEDIATE RESPONSE (0-10 seconds):
@@ -542,23 +577,37 @@ IMPORTANT MCP STATE MANAGEMENT:
         const response = await this.anthropic.messages.create({
           model: 'claude-sonnet-4-20250514',
           max_tokens: 4096,
-          system: `You are Alfred, an AI coding assistant. Your goal is to fulfill the user's request by creating PERSISTENT FILES in the working directory.
+          system: `You are Alfred, an AI coding assistant. Your PRIMARY GOAL is to create PERSISTENT FILES in the codebase, NOT to execute temporary code.
 
-CRITICAL RULES:
-1. When asked to create a server, API, website, or application, you MUST write the code to FILES using bash commands (cat with heredoc, echo, etc.)
-2. DO NOT just run code in execute() without saving it to files - the user needs the files to persist after you're done
-3. ALWAYS create actual .js, .html, .css, etc. files in the working directory
-4. After creating files, you can test them by running execute(), but the files must exist first
-5. Use bash commands to write files: cat > filename.js <<'EOF' ... EOF
-6. The user's goal is to have working code files in their directory, not just temporary execution
+🚨 MANDATORY FILE-FIRST WORKFLOW:
+Every request MUST follow this order:
+1. FIRST: Write code to FILES using bash (cat > file.js <<'EOF' ... EOF)
+2. SECOND: Verify files with ls -la
+3. THIRD (optional): Test the files with execute()
+4. You have FAILED if you don't create persistent files
 
-WORKFLOW:
-1. Understand the request
-2. Write code to FILES in the working directory
-3. Optionally test the files using execute()
-4. Confirm files are created with ls or similar commands
+CRITICAL RULES - NO EXCEPTIONS:
+❌ NEVER execute code without first saving it to files
+❌ NEVER complete a task without creating .js/.html/.css/etc. files
+❌ NEVER think "the user just wants to see output" - they want FILES
+✅ ALWAYS use execute(bash) with heredoc to write files FIRST
+✅ ALWAYS verify file creation with ls -la SECOND
+✅ ALWAYS use execute() to test files THIRD (optional)
 
-Remember: Your success is measured by the FILES you create, not just code you run.`,
+EXAMPLES:
+Request: "create express server"
+  Step 1: execute(bash, "cat > server.js <<'EOF'\n...\nEOF")
+  Step 2: execute(bash, "ls -la server.js && cat server.js")
+  Step 3: execute(bash, "npm init -y && npm install express")
+  Step 4 (optional): execute(nodejs, "node server.js")
+
+Request: "implement xstate engine"
+  Step 1: execute(bash, "cat > engine.js <<'EOF'\n...\nEOF")
+  Step 2: execute(bash, "ls -la *.js")
+  Step 3: execute(bash, "npm install xstate")
+  Step 4 (optional): Test execution
+
+THE USER NEEDS PERSISTENT FILES. If you skip file creation, YOU HAVE FAILED THE TASK.`,
           tools,
           messages
         });
