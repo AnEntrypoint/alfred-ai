@@ -10,6 +10,7 @@ import { spawn, fork } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import * as fs from 'fs';
 import { join, resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { EventEmitter } from 'events';
 import { tmpdir } from 'os';
 import { v4 as uuidv4 } from 'uuid';
@@ -1102,7 +1103,15 @@ async function runCLIMode(taskPrompt) {
 }
 
 // Start the server or CLI
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Check if this file is being run directly (not imported as a module)
+const __filename = fileURLToPath(import.meta.url);
+const isMainModule = process.argv[1] && (
+  resolve(process.argv[1]) === __filename ||
+  process.argv[1].endsWith('alfred-ai.js') ||
+  process.argv[1].endsWith('alfred-ai')
+);
+
+if (isMainModule) {
   const args = process.argv.slice(2);
 
   // Check for CLI mode: any argument that's not 'mcp'
