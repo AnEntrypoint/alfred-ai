@@ -847,6 +847,14 @@ CRITICAL RULES - NO EXCEPTIONS:
 - ALWAYS verify file creation with ls -la SECOND
 - ALWAYS use execute() to test files THIRD (optional)
 
+ABOUT PLAYWRIGHT MCP TOOLS FOR BROWSER TESTING:
+When asked to "test with Playwright MCP", you have access to browser automation tools ONLY when using execute(nodejs):
+- await mcp__plugin_glootie-cc_playwright__browser_navigate('http://...')
+- await mcp__plugin_glootie-cc_playwright__browser_click('selector')
+- await mcp__plugin_glootie-cc_playwright__browser_screenshot()
+- await mcp__plugin_glootie-cc_playwright__browser_snapshot()
+These are ONLY available INSIDE execute(nodejs) code. Do NOT try to use them outside execute() or in bash.
+
 EXAMPLES:
 Request: "create express server"
   Step 1: execute(bash, "cat > server.js <<'EOF'\n...\nEOF")
