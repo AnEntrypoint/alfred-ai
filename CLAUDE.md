@@ -73,8 +73,42 @@ source ~/zlaude && npx alfred-ai@latest "task"
 - **Type**: module (ES6)
 - **Bin**: alfred-ai
 
+## Implementation Notes
+
+### Critical Details
+1. **Tool Schema Format**: Must use `input_schema` (with underscore) not `inputSchema` for API compatibility
+2. **Recursion Prevention**: Alfred tool must be excluded when running within alfred handler to prevent infinite recursion
+3. **Authentication**: Supports both `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` environment variables
+4. **Base URL**: Respects `ANTHROPIC_BASE_URL` for custom API endpoints (e.g., z.ai)
+5. **Dual Mode Detection**: Any CLI argument except "mcp" triggers CLI mode
+
+### Key Learnings
+- The Anthropic SDK expects `input_schema` in tool definitions, not `inputSchema`
+- When running agentic loops within tools, must prevent recursive tool calls
+- Authentication can come from multiple sources (API_KEY or AUTH_TOKEN)
+- Custom base URLs must be passed to Anthropic SDK constructor
+- MCP tools must have consistent schema format across all tool definitions
+
+### Testing Commands
+```bash
+# Test CLI mode
+source ~/zlaude
+alfred-ai "list files in current directory"
+
+# Test with custom API
+export ANTHROPIC_API_KEY=your-key
+export ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic
+alfred-ai "your task"
+
+# Test MCP mode
+alfred-ai mcp
+```
+
 ## Status
 ✅ Production ready
+✅ Dual-mode operation (CLI + MCP)
 ✅ API key authentication working
 ✅ NPX execution verified
 ✅ MCP integration functional
+✅ Recursion protection implemented
+✅ Custom API endpoint support
