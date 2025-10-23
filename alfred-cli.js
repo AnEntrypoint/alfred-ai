@@ -12,6 +12,7 @@ class AlfredMCPClient {
     this.authManager = new AuthenticationManager();
     this.playwrightClient = null;
     this.vexifyClient = null;
+    this.alfredClient = null;
     this.availableTools = new Map();
     this.isRunning = false;
     this.runningProcesses = new Map();
@@ -121,11 +122,19 @@ class AlfredMCPClient {
         'Vexify'
       );
 
+      this.alfredClient = await this.connectToMCPServer(
+        ['-y', 'alfred-ai@latest', 'mcp'],
+        'Alfred'
+      );
+
       for (const [name, tool] of this.playwrightClient.tools) {
         this.availableTools.set(`mcp__plugin_glootie-cc_playwright__${name}`, { ...tool, source: 'playwright' });
       }
       for (const [name, tool] of this.vexifyClient.tools) {
         this.availableTools.set(`mcp__plugin_glootie-cc_glootie__${name}`, { ...tool, source: 'vexify' });
+      }
+      for (const [name, tool] of this.alfredClient.tools) {
+        this.availableTools.set(`mcp__plugin_alfred__${name}`, { ...tool, source: 'alfred' });
       }
 
       console.log(`🛠️  Loaded ${this.availableTools.size} MCP tools for execution environment`);
@@ -160,6 +169,14 @@ class AlfredMCPClient {
       .map(([name, tool]) => {
         const shortName = name.replace('mcp__plugin_glootie-cc_glootie__', '');
         return `  - ${shortName}(): ${tool.description}`;
+      })
+      .join('\n');
+
+    const alfredTools = Array.from(this.availableTools.entries())
+      .filter(([name]) => name.includes('alfred'))
+      .map(([name, tool]) => {
+        const shortName = name.replace('mcp__plugin_alfred__', '');
+        return `  - ${shortName}(prompt): ${tool.description}`;
       })
       .join('\n');
 
@@ -238,8 +255,15 @@ ${playwrightTools}
 Vexify MCP Tools:
 ${vexifyTools}
 
-IMPORTANT: Each execute() call spawns a fresh process. Variables/state don't persist between calls.
-For multi-step operations, write all logic in a single execute() call.`;
+Alfred MCP Tools (Recursive):
+${alfredTools}
+
+IMPORTANT MCP STATE MANAGEMENT:
+- MCP tool servers (Playwright, Vexify, Alfred) maintain persistent state between execute() calls
+- Browser sessions, processes, and other resources persist across multiple execute() calls
+- Each execute() spawns a fresh Node.js/Bash process, but MCP servers remain connected
+- For multi-step operations using execute() vars, write all logic in a single execute() call
+- For multi-step operations using MCP tools, you can spread across multiple execute() calls`;
   }
 
   async executeCode(code, runtime = 'nodejs', processId = null) {
@@ -754,6 +778,15 @@ Remember: Your success is measured by the FILES you create, not just code you ru
         this.vexifyClient.process.stdin?.destroy();
         this.vexifyClient.process.stdout?.destroy();
         this.vexifyClient.process.stderr?.destroy();
+      } catch (e) {}
+    }
+
+    if (this.alfredClient && this.alfredClient.process) {
+      try {
+        this.alfredClient.process.kill('SIGKILL');
+        this.alfredClient.process.stdin?.destroy();
+        this.alfredClient.process.stdout?.destroy();
+        this.alfredClient.process.stderr?.destroy();
       } catch (e) {}
     }
 
