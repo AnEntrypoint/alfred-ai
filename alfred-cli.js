@@ -20,6 +20,113 @@ class AlfredMCPClient {
     this.errorHistory = new Map();
     this.pendingAgentUpdates = [];
     this.agentTodoList = [];
+
+    // Interactive prompt management
+    this.promptQueue = [];
+    this.isAgentBusy = false;
+    this.promptVisible = true;
+    this.currentInput = '';
+    this.lastEscTime = 0;
+    this.rl = null;
+    this.escSequenceTimeout = null;
+  }
+
+  showInteractivePrompt() {
+    if (!this.promptVisible && this.rl) {
+      this.promptVisible = true;
+      this.rl.write(this.currentInput);
+      this.rl.prompt();
+    }
+  }
+
+  hideInteractivePrompt() {
+    if (this.promptVisible && this.rl) {
+      this.promptVisible = false;
+      // Clear current line and hide prompt
+      this.rl.write(null, { ctrl: true, name: 'u' }); // Clear line
+      process.stdout.write('\x1b[1A\x1b[2K'); // Move up and clear line
+    }
+  }
+
+  clearCurrentInput() {
+    this.currentInput = '';
+    if (this.promptVisible && this.rl) {
+      this.rl.write(null, { ctrl: true, name: 'u' }); // Clear line
+      this.rl.prompt();
+    }
+  }
+
+  processQueue() {
+    if (this.promptQueue.length > 0 && !this.isAgentBusy) {
+      const nextRequest = this.promptQueue.shift();
+      if (nextRequest) {
+        this.runAgenticLoop(nextRequest);
+      }
+    }
+  }
+
+  setupInteractiveHandlers() {
+    // Handle raw input for ESC key detection
+    process.stdin.setRawMode(true);
+    process.stdin.on('data', (key) => {
+      const str = key.toString();
+
+      // ESC key detection
+      if (str === '\x1b') {
+        const currentTime = Date.now();
+
+        if (currentTime - this.lastEscTime < 300) {
+          // Double ESC - clear current input
+          this.clearCurrentInput();
+          console.log('\n🗑️  Prompt cleared');
+        } else {
+          // Single ESC - toggle visibility
+          this.lastEscTime = currentTime;
+          if (this.promptVisible) {
+            this.hideInteractivePrompt();
+            console.log('\n👁️  Prompt hidden (press any key to show, ESC again to clear)');
+          } else {
+            this.showInteractivePrompt();
+          }
+        }
+
+        // Clear any existing timeout
+        if (this.escSequenceTimeout) {
+          clearTimeout(this.escSequenceTimeout);
+        }
+
+        // Reset after timeout if no second ESC
+        this.escSequenceTimeout = setTimeout(() => {
+          this.lastEscTime = 0;
+        }, 400);
+      } else if (!this.promptVisible) {
+        // Any other key while hidden - show prompt
+        this.showInteractivePrompt();
+        // Forward the key to readline if it's not ESC
+        if (str !== '\x1b' && this.rl) {
+          this.rl.write(str);
+        }
+      }
+    });
+
+    // Set raw mode back to normal for readline
+    process.stdin.setRawMode(false);
+  }
+
+  updatePromptStatus(busy) {
+    this.isAgentBusy = busy;
+
+    if (busy && this.promptVisible) {
+      // Agent is busy, hide prompt to avoid interference
+      this.hideInteractivePrompt();
+      console.log('\n⏳ Agent busy with current request...');
+      console.log('💭 You can type next request (hidden until agent finishes)');
+      console.log('👁️  Press ESC to toggle prompt visibility, ESC+ESC to clear');
+    } else if (!busy) {
+      // Agent is free, show prompt and process queue
+      this.showInteractivePrompt();
+      this.processQueue();
+    }
   }
 
   async connectToMCPServer(serverCommand, serverName) {
@@ -480,6 +587,8 @@ IMPORTANT MCP STATE MANAGEMENT:
   }
 
   async runAgenticLoop(userMessage) {
+    // Set agent as busy
+    this.updatePromptStatus(true);
     console.log('\n🤖 Alfred Agent: Starting to process your request...\n');
 
     const tools = [
@@ -985,45 +1094,61 @@ After completing your user's task, you MUST ALWAYS perform these steps in order:
     }
 
     console.log('\n✅ Agent workflow complete\n');
+
+    // Set agent as free and process queue
+    this.updatePromptStatus(false);
   }
 
   async startInteractiveMode() {
     console.log('🤖 Alfred - AI Coding Assistant (Agentic Mode)');
     console.log('📋 Connected to: Playwright MCP + Vexify MCP');
     console.log('🛠️  MCP tools available in execution environment');
-    console.log('💡 Type your requests or "exit" to quit\n');
+    console.log('💡 Type your requests or "exit" to quit');
+    console.log('👁️  Press ESC to hide/show prompt, ESC+ESC to clear\n');
 
-    const rl = createInterface({
+    this.rl = createInterface({
       input: process.stdin,
       output: process.stdout,
       prompt: 'alfred> '
     });
 
     this.isRunning = true;
+    this.setupInteractiveHandlers();
 
-    rl.prompt();
-
-    rl.on('line', async (input) => {
+    // Modified line handler for queuing
+    this.rl.on('line', (input) => {
       const trimmed = input.trim();
 
       if (trimmed === 'exit' || trimmed === 'quit') {
         console.log('👋 Goodbye!');
         this.cleanup();
-        rl.close();
+        this.rl.close();
         return;
       }
 
       if (trimmed) {
-        await this.runAgenticLoop(trimmed);
-      }
+        // Store current input for potential ESC+ESC clear
+        this.currentInput = trimmed;
 
-      rl.prompt();
+        if (this.isAgentBusy) {
+          // Add to queue if agent is busy
+          this.promptQueue.push(trimmed);
+          console.log(`\n💭 Request queued: ${trimmed.substring(0, 50)}${trimmed.length > 50 ? '...' : ''}`);
+          console.log(`📊 Queue length: ${this.promptQueue.length}`);
+        } else {
+          // Process immediately if agent is free
+          this.runAgenticLoop(trimmed);
+        }
+      }
     });
 
-    rl.on('close', () => {
+    this.rl.on('close', () => {
       this.cleanup();
       process.exit(0);
     });
+
+    // Show initial prompt
+    this.rl.prompt();
   }
 
   cleanup() {
