@@ -1,15 +1,39 @@
-# Alfred AI - MCP Server with API Key Authentication
+# Alfred AI - Dual-Mode AI Agent
 
 ## Overview
-Alfred AI is a simplified MCP (Model Context Protocol) server that provides direct client/server communication without the SDK overhead.
+Alfred AI is a powerful AI agent that operates in two modes:
+1. **CLI Mode**: Autonomous task executor with full agentic capabilities
+2. **MCP Mode**: MCP server with `alfred` tool for integration with other tools
 
-## Authentication
-Simple API key authentication via environment variable.
+## Modes
 
-### Setup
+### CLI Agent Mode (Default)
+Run Alfred as a standalone agent to accomplish complex tasks:
+
 ```bash
 export ANTHROPIC_API_KEY=your-api-key-here
-npx alfred-ai "your task here"
+npx alfred-ai@latest "your task here"
+```
+
+**Example:**
+```bash
+npx alfred-ai@latest "analyze this codebase and create a test suite"
+```
+
+### MCP Server Mode
+Run as an MCP server by passing the `mcp` argument:
+
+```bash
+npx alfred-ai mcp
+```
+
+In MCP mode, Alfred exposes an `alfred` tool that other MCP clients can use to delegate complex agentic tasks.
+
+## Authentication
+Requires `ANTHROPIC_API_KEY` environment variable:
+
+```bash
+export ANTHROPIC_API_KEY=your-api-key-here
 ```
 
 ## Core Files
