@@ -604,7 +604,7 @@ class MarvinMCPServer {
       tools.push({
         name: 'execute',
         description: 'Execute code with automatic runtime detection',
-        inputSchema: {
+        input_schema: {
           type: 'object',
           properties: {
             code: {
@@ -633,7 +633,7 @@ class MarvinMCPServer {
           tools.push({
             name: `${serverName}_${tool.name}`,
             description: `[${serverName}] ${tool.description}`,
-            inputSchema: tool.inputSchema
+            input_schema: tool.input_schema || tool.inputSchema
           });
         }
       }
@@ -642,7 +642,7 @@ class MarvinMCPServer {
       tools.push({
         name: 'marvin_status',
         description: 'Get Marvin system status and history summary',
-        inputSchema: {
+        input_schema: {
           type: 'object',
           properties: {}
         }
@@ -651,7 +651,7 @@ class MarvinMCPServer {
       tools.push({
         name: 'marvin_kill',
         description: 'Kill a running execution',
-        inputSchema: {
+        input_schema: {
           type: 'object',
           properties: {
             execId: {
@@ -666,7 +666,7 @@ class MarvinMCPServer {
       tools.push({
         name: 'alfred',
         description: 'Run Alfred AI agent with full agentic capabilities to accomplish complex tasks. Alfred can use all available tools in an autonomous loop to complete your request.',
-        inputSchema: {
+        input_schema: {
           type: 'object',
           properties: {
             prompt: {
@@ -834,7 +834,8 @@ Available Tools:
         throw new Error('No API key available for Alfred agent');
       }
 
-      const output = await runAgenticLoop(prompt, this, apiKey, false);
+      // Exclude alfred tool to prevent recursion
+      const output = await runAgenticLoop(prompt, this, apiKey, false, true);
 
       return {
         content: [{
@@ -963,7 +964,7 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 // Shared agentic loop function
-async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true) {
+async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, excludeAlfred = false) {
   const Anthropic = (await import('@anthropic-ai/sdk')).default;
 
   // Get all available tools
@@ -972,7 +973,15 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true) {
     params: {}
   });
 
-  const anthropic = new Anthropic({ apiKey });
+  // Filter out alfred tool if excluded (prevents recursion)
+  if (excludeAlfred) {
+    toolsResult.tools = toolsResult.tools.filter(t => t.name !== 'alfred');
+  }
+
+  const anthropic = new Anthropic({
+    apiKey,
+    baseURL: process.env.ANTHROPIC_BASE_URL
+  });
 
   const messages = [{
     role: 'user',
