@@ -19,6 +19,7 @@ class AlfredMCPClient {
     this.processCounter = 0;
     this.errorHistory = new Map();
     this.pendingAgentUpdates = [];
+    this.agentTodoList = [];
   }
 
   async connectToMCPServer(serverCommand, serverName) {
@@ -530,6 +531,44 @@ IMPORTANT MCP STATE MANAGEMENT:
         }
       },
       {
+        name: 'todo_list',
+        description: 'Manage your todo list to track progress on complex tasks. Use this to organize multi-step work and provide visibility into your progress.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            action: {
+              type: 'string',
+              enum: ['create', 'update', 'list', 'clear'],
+              description: 'Action to perform on todo list'
+            },
+            todos: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  content: {
+                    type: 'string',
+                    description: 'Description of the task to do'
+                  },
+                  status: {
+                    type: 'string',
+                    enum: ['pending', 'in_progress', 'completed'],
+                    description: 'Current status of the task'
+                  },
+                  activeForm: {
+                    type: 'string',
+                    description: 'Present continuous form of the task (e.g., "Creating files", "Testing application")'
+                  }
+                },
+                required: ['content', 'status', 'activeForm']
+              },
+              description: 'Array of todo items (required for create/update actions)'
+            }
+          },
+          required: ['action']
+        }
+      },
+      {
         name: 'wait_for_logs',
         description: 'Wait for 60 seconds to receive logs from background processes. Use this instead of sleep when waiting for process output. Logs will be automatically queued and delivered when you wake up.',
         input_schema: {
@@ -547,6 +586,56 @@ IMPORTANT MCP STATE MANAGEMENT:
     const messages = [{ role: 'user', content: userMessage }];
     let continueLoop = true;
     let iterationCount = 0;
+
+    // Smart prompt history management function
+    const manageHistory = (msgArray) => {
+      const ONE_KB = 1024;
+      const MIN_HISTORY_LENGTH = 4; // Always keep first user message + at least 2 exchanges
+
+      // If we have fewer than 8 messages, keep everything (early conversation)
+      if (msgArray.length < 8) {
+        return msgArray;
+      }
+
+      // If we have more than 20 messages, we need to prune
+      if (msgArray.length > 20) {
+        const result = [msgArray[0]]; // Keep original user message
+        const recentMessages = msgArray.slice(-10); // Keep last 10 messages
+        const middleMessages = msgArray.slice(1, -10);
+
+        // Process middle messages - keep short ones, remove long ones
+        for (let i = 0; i < middleMessages.length; i += 2) {
+          const userMsg = middleMessages[i];
+          const assistantMsg = middleMessages[i + 1];
+
+          if (userMsg && userMsg.content) {
+            const userSize = JSON.stringify(userMsg.content).length;
+
+            // Keep short user messages (<1KB), skip long ones
+            if (userSize < ONE_KB) {
+              result.push(userMsg);
+              if (assistantMsg) result.push(assistantMsg);
+            } else {
+              // For long messages, add a summary instead
+              result.push({
+                role: userMsg.role,
+                content: `[Previous long user request (${Math.round(userSize/1024)}KB) - context preserved for long-run intelligence]`
+              });
+              if (assistantMsg) {
+                result.push({
+                  role: assistantMsg.role,
+                  content: `[Previous assistant response to long request - context preserved for long-run intelligence]`
+                });
+              }
+            }
+          }
+        }
+
+        return [...result, ...recentMessages];
+      }
+
+      return msgArray;
+    };
 
     while (continueLoop) {
       iterationCount++;
@@ -607,9 +696,25 @@ Request: "implement xstate engine"
   Step 3: execute(bash, "npm install xstate")
   Step 4 (optional): Test execution
 
-THE USER NEEDS PERSISTENT FILES. If you skip file creation, YOU HAVE FAILED THE TASK.`,
+PROGRESS TRACKING:
+- Use todo_list tool to track complex multi-step tasks
+- Helps organize work and provides visibility into progress
+- Especially useful for projects with multiple files/steps
+
+THE USER NEEDS PERSISTENT FILES. If you skip file creation, YOU HAVE FAILED THE TASK.
+
+🚨 CRITICAL - NO EXTRA SUMMARY FILES ALLOWED:
+❌ NEVER create extra .md files except README.md
+❌ NEVER create docs/ folders or additional documentation files
+❌ NEVER create summary files that just describe what was done
+✅ ALWAYS maintain and update README.md for the project
+✅ ONLY create functional code files (.js, .html, .css, .json, etc.)
+✅ ONLY create files that actually DO something when executed
+
+RULE: README.md is REQUIRED and should be updated with project details
+RULE: NO other .md files, documentation, or summaries unless explicitly requested
           tools,
-          messages
+          manageHistory(messages)
         });
 
         console.log(`💭 Agent: ${response.stop_reason}\n`);
@@ -717,6 +822,100 @@ THE USER NEEDS PERSISTENT FILES. If you skip file creation, YOU HAVE FAILED THE 
                     type: 'tool_result',
                     tool_use_id: block.id,
                     content: `Process ${processId} not found. It may have already completed.`
+                  });
+                }
+              } else if (block.name === 'todo_list') {
+                const { action, todos } = block.input;
+
+                if (action === 'create' || action === 'update') {
+                  if (!todos || !Array.isArray(todos)) {
+                    toolResults.push({
+                      type: 'tool_result',
+                      tool_use_id: block.id,
+                      content: '❌ Error: todos array is required for create/update actions'
+                    });
+                    continue;
+                  }
+
+                  if (action === 'create') {
+                    this.agentTodoList = todos;
+                    console.log(`\n📋 Created todo list with ${todos.length} items:\n`);
+                    todos.forEach((todo, index) => {
+                      const icon = todo.status === 'completed' ? '✅' : todo.status === 'in_progress' ? '🔄' : '⏳';
+                      console.log(`  ${index + 1}. ${icon} ${todo.content} (${todo.status})`);
+                    });
+                    console.log('');
+                  } else if (action === 'update') {
+                    this.agentTodoList = todos;
+                    console.log(`\n📋 Updated todo list:\n`);
+                    todos.forEach((todo, index) => {
+                      const icon = todo.status === 'completed' ? '✅' : todo.status === 'in_progress' ? '🔄' : '⏳';
+                      console.log(`  ${index + 1}. ${icon} ${todo.content} (${todo.status})`);
+                    });
+                    console.log('');
+                  }
+
+                  const completedCount = todos.filter(t => t.status === 'completed').length;
+                  const inProgressCount = todos.filter(t => t.status === 'in_progress').length;
+                  const pendingCount = todos.filter(t => t.status === 'pending').length;
+
+                  toolResults.push({
+                    type: 'tool_result',
+                    tool_use_id: block.id,
+                    content: `📋 Todo list ${action === 'create' ? 'created' : 'updated'} with ${todos.length} items:\n` +
+                      `• ${completedCount} completed ✅\n` +
+                      `• ${inProgressCount} in progress 🔄\n` +
+                      `• ${pendingCount} pending ⏳\n\n` +
+                      `Current todo list:\n` +
+                      todos.map((todo, i) => {
+                        const icon = todo.status === 'completed' ? '✅' : todo.status === 'in_progress' ? '🔄' : '⏳';
+                        return `${i + 1}. ${icon} ${todo.content}`;
+                      }).join('\n')
+                  });
+
+                } else if (action === 'list') {
+                  console.log(`\n📋 Current todo list (${this.agentTodoList.length} items):\n`);
+                  this.agentTodoList.forEach((todo, index) => {
+                    const icon = todo.status === 'completed' ? '✅' : todo.status === 'in_progress' ? '🔄' : '⏳';
+                    console.log(`  ${index + 1}. ${icon} ${todo.content} (${todo.status})`);
+                  });
+                  console.log('');
+
+                  if (this.agentTodoList.length === 0) {
+                    toolResults.push({
+                      type: 'tool_result',
+                      tool_use_id: block.id,
+                      content: '📋 Todo list is empty. Use todo_list with action="create" to start tracking tasks.'
+                    });
+                  } else {
+                    const completedCount = this.agentTodoList.filter(t => t.status === 'completed').length;
+                    const inProgressCount = this.agentTodoList.filter(t => t.status === 'in_progress').length;
+                    const pendingCount = this.agentTodoList.filter(t => t.status === 'pending').length;
+
+                    toolResults.push({
+                      type: 'tool_result',
+                      tool_use_id: block.id,
+                      content: `📋 Current todo list (${this.agentTodoList.length} items):\n` +
+                        `• ${completedCount} completed ✅\n` +
+                        `• ${inProgressCount} in progress 🔄\n` +
+                        `• ${pendingCount} pending ⏳\n\n` +
+                        `Tasks:\n` +
+                        this.agentTodoList.map((todo, i) => {
+                          const icon = todo.status === 'completed' ? '✅' : todo.status === 'in_progress' ? '🔄' : '⏳';
+                          return `${i + 1}. ${icon} ${todo.content}`;
+                        }).join('\n')
+                    });
+                  }
+
+                } else if (action === 'clear') {
+                  const count = this.agentTodoList.length;
+                  this.agentTodoList = [];
+                  console.log(`\n📋 Cleared todo list (${count} items removed)\n`);
+
+                  toolResults.push({
+                    type: 'tool_result',
+                    tool_use_id: block.id,
+                    content: `📋 Todo list cleared. ${count} items removed.`
                   });
                 }
               } else if (block.name === 'wait_for_logs') {
