@@ -1373,11 +1373,49 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
 
   if (verbose) {
     console.error('\n🤖 Agent starting...\n');
-    console.error('[Tools Available] Total: ' + toolsResult.tools.length);
+
+    // Group tools by server
+    const toolsByServer = {};
+    const builtInTools = [];
+
     for (const tool of toolsResult.tools) {
-      console.error(`  - ${tool.name}: ${tool.description}`);
+      if (tool.name === 'execute' || tool.name === 'alfred_status' || tool.name === 'alfred_kill' || tool.name === 'alfred') {
+        builtInTools.push(tool);
+      } else {
+        // Extract server name from tool name (format: serverName_toolName)
+        const parts = tool.name.split('_');
+        const serverName = parts[0];
+        if (!toolsByServer[serverName]) {
+          toolsByServer[serverName] = [];
+        }
+        toolsByServer[serverName].push(tool);
+      }
     }
-    console.error('');
+
+    // Display built-in tools
+    if (builtInTools.length > 0) {
+      console.error('[Built-in Tools]');
+      for (const tool of builtInTools) {
+        console.error(`  ✓ ${tool.name}: ${tool.description}`);
+      }
+      console.error('');
+    }
+
+    // Display tools by server
+    if (Object.keys(toolsByServer).length > 0) {
+      console.error('[MCP Server Tools]');
+      for (const [serverName, tools] of Object.entries(toolsByServer)) {
+        console.error(`  ${serverName} (${tools.length} tools)`);
+        for (const tool of tools) {
+          // Extract just the tool name without server prefix
+          const toolNameOnly = tool.name.substring(serverName.length + 1);
+          console.error(`    • ${toolNameOnly}`);
+        }
+      }
+      console.error('');
+    }
+
+    console.error(`[Tools Summary] Total: ${toolsResult.tools.length} tools available\n`);
   }
 
   let output = '';
