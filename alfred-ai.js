@@ -1739,7 +1739,7 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
           process.stderr.write(text);
           output += text;
         } else if (event.delta.type === 'input_json_delta') {
-          // Stream tool input assembly in real-time, character by character
+          // Stream tool input assembly in real-time, character by character as it arrives
           const partial = event.delta.partial_json;
           const isFirstChunk = currentToolInputJson.length === 0;
           currentToolInputJson += partial;
@@ -1750,7 +1750,7 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
             if (isFirstChunk) {
               process.stderr.write(`\n🔧 ${lastTool.name} Input (streaming):\n  `);
             }
-            // Write each character individually for true character-by-character streaming
+            // Write each character individually as it arrives from the API
             for (let i = 0; i < partial.length; i++) {
               process.stderr.write(partial[i]);
             }
