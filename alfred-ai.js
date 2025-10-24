@@ -370,41 +370,44 @@ class HistoryManager {
     }
 
     this.tokenCount = totalTokens;
-
-    // If we exceed 60k tokens, perform aggressive cleanup
-    if (this.tokenCount > 60000) {
-      this.performAggressiveCleanup();
-    }
   }
 
-  performAggressiveCleanup() {
-    console.error('[History Manager] Performing aggressive cleanup - exceeded 60k tokens');
+  performCleanup() {
+    // Cleanup runs once per LLM call to remove items older than 10 steps
+    // Keep MCP calls (max 10) - natural limit from recordMcpCall
+    // Keep execute inputs/outputs (max 3 each) - natural limit from recordExecute
+    // Keep hooks (max 3) - naturally cleaned with execute outputs
 
-    // Remove oldest 50% of MCP calls
-    const callsToRemove = Math.floor(this.mcpCalls.length / 2);
-    this.mcpCalls.splice(0, callsToRemove);
+    const currentMcpCount = this.mcpCalls.length;
+    const currentInputCount = this.executeInputs.length;
+    const currentOutputCount = this.executeOutputs.length;
+    const currentHookCount = this.hooks.length;
 
-    // Remove oldest execute inputs/outputs and hooks together
-    if (this.executeInputs.length > 1) {
-      this.executeInputs.splice(0, Math.floor(this.executeInputs.length / 2));
+    if (currentMcpCount > 10) {
+      const toRemove = currentMcpCount - 10;
+      this.mcpCalls.splice(0, toRemove);
+      console.error(`[History Manager] Cleaned up ${toRemove} old MCP calls`);
     }
 
-    if (this.executeOutputs.length > 1) {
-      this.executeOutputs.splice(0, Math.floor(this.executeOutputs.length / 2));
+    if (currentInputCount > 3) {
+      const toRemove = currentInputCount - 3;
+      this.executeInputs.splice(0, toRemove);
+      console.error(`[History Manager] Cleaned up ${toRemove} old execute inputs`);
     }
 
-    // Remove hooks at same rate as execution outputs
-    if (this.hooks.length > 1) {
-      this.hooks.splice(0, Math.floor(this.hooks.length / 2));
+    if (currentOutputCount > 3) {
+      const toRemove = currentOutputCount - 3;
+      this.executeOutputs.splice(0, toRemove);
+      console.error(`[History Manager] Cleaned up ${toRemove} old execute outputs`);
     }
 
-    // Compact remaining data aggressively
-    this.mcpCalls = this.mcpCalls.map(call => ({
-      ...call,
-      args: this.compactData(call.args),
-      result: this.compactData(call.result)
-    }));
+    if (currentHookCount > 3) {
+      const toRemove = currentHookCount - 3;
+      this.hooks.splice(0, toRemove);
+      console.error(`[History Manager] Cleaned up ${toRemove} old hooks`);
+    }
 
+    // Recalculate tokens after cleanup
     this.updateTokenCount();
   }
 
@@ -1376,9 +1379,15 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
 
   let output = '';
 
+  // Track recently called tools to prevent loops
+  const recentToolCalls = [];
+
   // Run agentic loop
   let continueLoop = true;
   while (continueLoop) {
+    // Cleanup once per LLM iteration to enforce max item limits
+    historyManager.performCleanup();
+
     const stream = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 8000,
@@ -1471,6 +1480,26 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
     // Process tool uses
     for (const block of assistantContent) {
       if (block.type === 'tool_use') {
+        // Detect tool calling loops - if same tool called 3+ times in a row, stop
+        const toolName = block.name;
+
+        // Track recent tool calls (keep last 5)
+        recentToolCalls.push(toolName);
+        if (recentToolCalls.length > 5) {
+          recentToolCalls.shift();
+        }
+
+        // Check if we're in a loop (same tool called 3 times in a row)
+        if (recentToolCalls.length >= 3) {
+          const lastThree = recentToolCalls.slice(-3);
+          if (lastThree[0] === lastThree[1] && lastThree[1] === lastThree[2]) {
+            if (verbose) console.error(`\n⚠️  Loop detected: ${toolName} called 3 times in a row. Stopping to prevent infinite loop.`);
+            // Stop the loop and return current output
+            continueLoop = false;
+            break;
+          }
+        }
+
         // Log tool input
         if (verbose && block.input && Object.keys(block.input).length > 0) {
           console.error(`📥 Input:`);
@@ -1485,6 +1514,19 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
 
         try {
           if (verbose) process.stderr.write(`\n📤 Executing tool...\n`);
+
+          // Validate Playwright screenshot parameters
+          if (block.name === 'mcp__plugin_glootie-cc_playwright__browser_take_screenshot') {
+            const args = block.input || {};
+            // fullPage cannot be used with element screenshots
+            if (args.fullPage && (args.element || args.ref)) {
+              if (args.fullPage) {
+                // Remove conflicting element parameters if fullPage is set
+                delete args.element;
+                delete args.ref;
+              }
+            }
+          }
 
           const result = await mcpServer.handleRequest({
             method: 'tools/call',
