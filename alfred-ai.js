@@ -497,6 +497,11 @@ class ExecutionManager {
       throw new Error('Runtime parameter is required (nodejs, deno, bun, python, bash, go, rust, c, cpp)');
     }
 
+    // Reject executions that attempt to use pkill
+    if (code.includes('pkill')) {
+      throw new Error('Execution rejected: pkill command is not allowed');
+    }
+
     const execId = `exec_${this.nextExecId++}`;
     console.error(`[Execution Manager] Starting execution ${execId}`);
 
