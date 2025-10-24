@@ -7,7 +7,7 @@
  */
 
 import { spawn, fork } from 'child_process';
-import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, unlinkSync, copyFileSync } from 'fs';
 import * as fs from 'fs';
 import { join, resolve, dirname } from 'path';
 import * as path from 'path';
@@ -205,6 +205,31 @@ class MCPManager extends EventEmitter {
       return content[0].text;
     }
     return JSON.stringify(result);
+  }
+
+  // Handle tool call from JSON-RPC (used by execute environment)
+  async handleToolCall(toolName, args) {
+    // Parse tool name to find server (format: mcp__servername__toolname or just toolname for builtInTools)
+    let serverName, actualToolName;
+
+    if (toolName.startsWith('mcp__')) {
+      const parts = toolName.split('__');
+      serverName = parts[1];
+      actualToolName = parts[2];
+    } else {
+      // Built-in tools don't have mcp__ prefix
+      serverName = 'builtInTools';
+      actualToolName = toolName;
+    }
+
+    // Call the tool via sendRequest
+    return await this.sendRequest(serverName, {
+      method: 'tools/call',
+      params: {
+        name: actualToolName,
+        arguments: args
+      }
+    });
   }
 
   getAllTools() {
@@ -568,6 +593,17 @@ class ExecutionManager {
 
         fs.writeFileSync(tempFile, code);
 
+        // Copy MCP helper module to temp directory for access by executed code
+        const __filename = fileURLToPath(import.meta.url);
+        const __dirname = dirname(__filename);
+        const helperSource = join(__dirname, 'mcp-runtime-helpers.cjs');
+        const helperDest = join(tmpdir(), 'mcp-runtime-helpers.cjs');
+        try {
+          copyFileSync(helperSource, helperDest);
+        } catch (e) {
+          console.error('[execution] Warning: Could not copy MCP helper module:', e.message);
+        }
+
         const command = this.getExecutionCommand(runtime, tempFile);
 
         console.error(`[execution] Spawning ${command.cmd} with args: ${JSON.stringify(command.args, null, 2)}`);
@@ -591,12 +627,60 @@ class ExecutionManager {
 
         let stdout = '';
         let stderr = '';
+        let stdoutBuffer = ''; // Buffer for JSON-RPC line parsing
 
-        child.stdout.on('data', (data) => {
+        child.stdout.on('data', async (data) => {
           const output = data.toString();
-          stdout += output;
-          accumulatedStdout += output;
-          process.stderr.write(output);
+          stdoutBuffer += output;
+
+          // Process complete lines for JSON-RPC requests
+          const lines = stdoutBuffer.split('\n');
+          stdoutBuffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+          for (const line of lines) {
+            // Check if this line is a JSON-RPC request
+            let isJsonRpc = false;
+            try {
+              const parsed = JSON.parse(line);
+              if (parsed.jsonrpc === '2.0' && parsed.method === 'tools/call') {
+                isJsonRpc = true;
+                // Handle MCP tool call from executed code
+                const { id, params } = parsed;
+                const { name: toolName, arguments: toolArgs } = params;
+
+                try {
+                  // Call the MCP tool
+                  const result = await mcpManager.handleToolCall(toolName, toolArgs);
+                  const response = {
+                    jsonrpc: '2.0',
+                    id,
+                    result
+                  };
+                  // Send response back to child process
+                  child.stdin.write(JSON.stringify(response) + '\n');
+                } catch (error) {
+                  const response = {
+                    jsonrpc: '2.0',
+                    id,
+                    error: {
+                      code: -32603,
+                      message: error.message
+                    }
+                  };
+                  child.stdin.write(JSON.stringify(response) + '\n');
+                }
+              }
+            } catch (e) {
+              // Not JSON or not a JSON-RPC request, treat as normal output
+            }
+
+            // If not JSON-RPC, add to stdout as normal
+            if (!isJsonRpc) {
+              stdout += line + '\n';
+              accumulatedStdout += line + '\n';
+              process.stderr.write(line + '\n');
+            }
+          }
         });
 
         child.stderr.on('data', (data) => {
@@ -847,7 +931,7 @@ class AlfredMCPServer {
       const tools = [];
 
       // Build execute tool description with dynamic MCP tool list
-      let executeDescription = `Execute code in the specified runtime with access to MCP tool functions.
+      let executeDescription = `Execute code in the specified runtime with access to MCP tool functions via JSON-RPC.
 
 CRITICAL: The code you provide will be written to a temp file and executed directly by the runtime interpreter.
 - For nodejs runtime: Provide pure JavaScript code (like you'd put in a .js file)
@@ -860,7 +944,12 @@ DO NOT:
 
 Preference order: python > nodejs > bash
 
-AVAILABLE MCP FUNCTIONS (callable from within your code):
+MCP TOOLS AVAILABLE via JSON-RPC stdio:
+To use MCP tools from Node.js, require the helper module from /tmp:
+  const mcp = require('/tmp/mcp-runtime-helpers.cjs');
+  await mcp.browser_navigate({url: 'https://example.com'});
+
+Available MCP functions:
 `;
 
       // Add Playwright tools
@@ -868,7 +957,8 @@ AVAILABLE MCP FUNCTIONS (callable from within your code):
       if (playwrightTools.length > 0) {
         executeDescription += `\nPlaywright Browser Automation (${playwrightTools.length} functions):\n`;
         playwrightTools.forEach(tool => {
-          executeDescription += `  - ${tool.name}(${Object.keys(tool.input_schema?.properties || {}).join(', ')}): ${tool.description}\n`;
+          const params = Object.keys(tool.input_schema?.properties || {}).join(', ');
+          executeDescription += `  - mcp.${tool.name}({${params}}): ${tool.description}\n`;
         });
       }
 
@@ -877,7 +967,8 @@ AVAILABLE MCP FUNCTIONS (callable from within your code):
       if (vexifyTools.length > 0) {
         executeDescription += `\nCode Search (${vexifyTools.length} functions):\n`;
         vexifyTools.forEach(tool => {
-          executeDescription += `  - ${tool.name}(${Object.keys(tool.input_schema?.properties || {}).join(', ')}): ${tool.description}\n`;
+          const params = Object.keys(tool.input_schema?.properties || {}).join(', ');
+          executeDescription += `  - mcp.${tool.name}({${params}}): ${tool.description}\n`;
         });
       }
 

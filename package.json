@@ -17,6 +17,7 @@
     "built-in-tools-mcp.js",
     "ast-grep-wrapper.js",
     "ast-error-handling.js",
+    "mcp-runtime-helpers.cjs",
     "timeout-test.js",
     ".codemode.json",
     "README.md",
