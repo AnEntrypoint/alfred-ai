@@ -468,6 +468,18 @@ class ExecutionManager {
     this.finalPromptCalled = false;
   }
 
+  getTodoStatus() {
+    // Get todo status from historyManager if available
+    if (typeof historyManager !== 'undefined' && historyManager.getTodos) {
+      try {
+        return historyManager.getTodos();
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
+  }
+
   async execute(args) {
     const { code, runtime, timeout = 10000 } = args;
 
@@ -1799,9 +1811,54 @@ async function runCLIMode(taskPrompt) {
   // Block for initialization to complete before running agent loop
   await Promise.all([hooksPromise, mcpInitPromise]);
 
-  await runAgenticLoop(taskPrompt, mcpServer, apiKey, true, false, historyManager);
+  // Run agent with automatic todo-aware resumption
+  let currentPrompt = taskPrompt;
+  let iterationCount = 0;
+  const maxIterations = 20; // Prevent infinite loops
 
-  console.error('\n✅ Task completed\n');
+  while (iterationCount < maxIterations) {
+    iterationCount++;
+
+    // Run the agent loop with current prompt
+    await runAgenticLoop(currentPrompt, mcpServer, apiKey, true, false, historyManager);
+
+    // Check for incomplete todo items after agent completes
+    if (typeof executionManager !== 'undefined' && executionManager.getTodoStatus) {
+      try {
+        const todos = executionManager.getTodoStatus();
+        const incompleteTodos = todos.filter(t => t.status !== 'completed');
+
+        if (incompleteTodos.length > 0) {
+          console.error(`\n🔄 Found ${incompleteTodos.length} incomplete todo(s). Resuming agent...\n`);
+
+          // Format incomplete todos for the next iteration
+          const todoList = incompleteTodos
+            .map((t, i) => `${i + 1}. [${t.status}] ${t.content}`)
+            .join('\n');
+
+          // Create a continuation prompt that references the incomplete todos
+          currentPrompt = `Continue from where you left off. The following items still need to be completed:\n\n${todoList}\n\nPlease continue working on these incomplete items and complete the task.`;
+        } else {
+          // All todos are complete
+          console.error('\n✅ All todo items completed\n');
+          break;
+        }
+      } catch (e) {
+        // If we can't check todos, assume task is complete
+        console.error('\n✅ Task completed\n');
+        break;
+      }
+    } else {
+      // No todo tracking available, exit after first iteration
+      console.error('\n✅ Task completed\n');
+      break;
+    }
+  }
+
+  if (iterationCount >= maxIterations) {
+    console.error('\n⚠️  Reached maximum iterations. Stopping agent loop.\n');
+  }
+
   mcpManager.shutdown();
   process.exit(0);
 }
