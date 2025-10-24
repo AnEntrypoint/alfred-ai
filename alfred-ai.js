@@ -821,6 +821,7 @@ class AlfredMCPServer {
         name: 'execute',
         description: `Execute code in the specified runtime. Preferred order: python > javascript (nodejs) > bash.
 
+AVAILABLE IN EXECUTE: All built-in tools (read, write, edit, bash, glob, grep, ls, todo) plus MCP tools.
 MCP TOOLS ACCESS: To use MCP tools (Playwright for browser automation, vexify for code search, etc.), write scripts:
 1. PLAYWRIGHT: const playwright = require('playwright'); const browser = await playwright.chromium.launch();
 2. VEXIFY: Code search via environment or Node.js integration
@@ -847,6 +848,21 @@ Examples: Write Node.js scripts using Playwright to test UIs, take screenshots, 
           required: ['code', 'runtime']
         }
       });
+
+      // Add built-in file operation and utility tools with dynamic descriptions from MCP server
+      const builtInTools = allTools['builtInTools'] || [];
+      const builtInToolNames = ['read', 'write', 'edit', 'bash', 'glob', 'grep', 'ls', 'todo'];
+
+      for (const toolName of builtInToolNames) {
+        const mcpTool = builtInTools.find(t => t.name === toolName);
+        if (mcpTool) {
+          tools.push({
+            name: toolName,
+            description: mcpTool.description,
+            input_schema: mcpTool.input_schema || mcpTool.inputSchema
+          });
+        }
+      }
 
       // MCP tools are accessed via execute tool, not directly exposed to agent
 
@@ -906,6 +922,12 @@ Examples: Write Node.js scripts using Playwright to test UIs, take screenshots, 
           return await this.handleKill(args);
         } else if (name === 'alfred') {
           return await this.handleAlfred(args);
+        } else if (['read', 'write', 'edit', 'bash', 'glob', 'grep', 'ls', 'todo'].includes(name)) {
+          // Delegate built-in tools to the builtInTools MCP server
+          const result = await mcpManager.callTool('builtInTools', name, args);
+          return {
+            content: [{ type: 'text', text: result }]
+          };
         } else {
           throw new Error(`Unknown tool: ${name}`);
         }
