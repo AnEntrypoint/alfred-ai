@@ -1637,8 +1637,8 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
           console.error(`\n📥 ${block.name} Input: (empty)`);
         }
 
+        const startTime = Date.now();
         try {
-          const startTime = Date.now();
           process.stderr.write(`\n📤 Executing tool...\n`);
 
           // Validate Playwright screenshot parameters
