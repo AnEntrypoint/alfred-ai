@@ -1,4 +1,4 @@
-// Enhanced error handling for AST tools (inspired by mcp-repl)
+
 export class ToolError extends Error {
   constructor(message, code = 'TOOL_ERROR', toolName = 'unknown', retryable = false, suggestions = []) {
     super(message);
@@ -107,19 +107,16 @@ export class ToolErrorHandler {
   }
 
   handleError(error, context = {}) {
-    // Handle null/undefined errors
     if (!error) {
       return new ToolError('Unknown error occurred', 'UNKNOWN_ERROR', this.toolName, false, [
         'Check the tool parameters and try again'
       ]);
     }
 
-    // If it's already our error type, return as-is
     if (error instanceof ToolError) {
       return error;
     }
 
-    // Handle common error patterns
     const message = error.message || error.toString();
 
     if (message.includes('ENOENT') || message.includes('not found')) {
@@ -141,11 +138,9 @@ export class ToolErrorHandler {
       return new ASTError(`AST functionality error: ${message}`, this.toolName);
     }
 
-    // Default error handling
     return new ExecutionError(message, this.toolName);
   }
 
-  // Format error for user display
   formatError(error) {
     if (error instanceof ToolError) {
       return error.toString();
@@ -156,12 +151,12 @@ export class ToolErrorHandler {
   }
 }
 
-// Convenience function for creating error handlers
+
 export function createErrorHandler(toolName) {
   return new ToolErrorHandler(toolName);
 }
 
-// Pattern validation utilities
+
 export class ASTPatternValidator {
   static validateAndFixPattern(pattern) {
     if (!pattern || typeof pattern !== 'string') {
@@ -172,7 +167,6 @@ export class ASTPatternValidator {
       );
     }
 
-    // Validate pattern length
     if (pattern.length > 1000) {
       throw new PatternError(
         'Pattern is too long (max 1000 characters)',
@@ -181,11 +175,9 @@ export class ASTPatternValidator {
       );
     }
 
-    // Basic syntax validation
     const fixes = [];
     let fixedPattern = pattern;
 
-    // Common pattern fixes
     if (pattern.includes('$') && !pattern.match(/\$\w+/)) {
       fixes.push('Add proper metavariables ($VAR, $FUNC, $$$)');
     }
