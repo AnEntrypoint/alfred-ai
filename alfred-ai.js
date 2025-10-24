@@ -847,7 +847,7 @@ class AlfredMCPServer {
       const tools = [];
 
       // Build execute tool description with dynamic MCP tool list
-      let executeDescription = `Execute code in the specified runtime. Use this tool to run standalone scripts ONLY.
+      let executeDescription = `Execute code in the specified runtime with access to MCP tool functions.
 
 CRITICAL: The code you provide will be written to a temp file and executed directly by the runtime interpreter.
 - For nodejs runtime: Provide pure JavaScript code (like you'd put in a .js file)
@@ -857,13 +857,32 @@ CRITICAL: The code you provide will be written to a temp file and executed direc
 DO NOT:
 - Mix syntax from different languages (e.g., # comments in JavaScript)
 - Include shell commands like "node -e" or "python -c"
-- Try to call MCP tools (browser_navigate, etc) - those are separate tools, not functions
-- Use "await tool_name()" syntax - MCP tools are called separately, not from within execute
 
 Preference order: python > nodejs > bash
 
-Environment variables available:
-- ALFRED_MCP_TOOLS: JSON string of all available MCP tools
+AVAILABLE MCP FUNCTIONS (callable from within your code):
+`;
+
+      // Add Playwright tools
+      const playwrightTools = allTools['playwright'] || [];
+      if (playwrightTools.length > 0) {
+        executeDescription += `\nPlaywright Browser Automation (${playwrightTools.length} functions):\n`;
+        playwrightTools.forEach(tool => {
+          executeDescription += `  - ${tool.name}(${Object.keys(tool.input_schema?.properties || {}).join(', ')}): ${tool.description}\n`;
+        });
+      }
+
+      // Add Vexify tools
+      const vexifyTools = allTools['vexify'] || [];
+      if (vexifyTools.length > 0) {
+        executeDescription += `\nCode Search (${vexifyTools.length} functions):\n`;
+        vexifyTools.forEach(tool => {
+          executeDescription += `  - ${tool.name}(${Object.keys(tool.input_schema?.properties || {}).join(', ')}): ${tool.description}\n`;
+        });
+      }
+
+      executeDescription += `\nEnvironment variables:
+- ALFRED_MCP_TOOLS: JSON string of all available MCP tools with full schemas
 - CODEMODE_WORKING_DIRECTORY: Current working directory`;
 
       // Add execute tool
@@ -907,7 +926,8 @@ Environment variables available:
         }
       }
 
-      // MCP tools are accessed via execute tool, not directly exposed to agent
+      // MCP tools (playwright, vexify, etc.) are NOT directly exposed to agent
+      // They are available as function calls within the execute tool environment
 
       // Add management tools
       tools.push({
