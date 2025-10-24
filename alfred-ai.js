@@ -1043,6 +1043,17 @@ Available Tools:
         throw new Error('No API key available for Alfred agent');
       }
 
+      // Ensure history manager is initialized for nested calls
+      if (!historyManager) {
+        historyManager = new HistoryManager();
+      }
+
+      // Ensure execution manager is initialized
+      if (!executionManager) {
+        executionManager = new ExecutionManager();
+        executionManager.mcpManager = mcpManager;
+      }
+
       // Ensure we only trigger final prompt once per handleAlfred call
       executionManager.resetFinalPromptFlag();
 
@@ -1474,9 +1485,26 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
           const lastTool = assistantContent[assistantContent.length - 1];
           if (lastTool && lastTool.type === 'tool_use') {
             lastTool.input_json = currentToolInputJson;
-            // Stream partial JSON input directly to console
+            // Stream partial JSON input directly to console with enhanced visibility
             if (verbose) {
-              process.stderr.write(partial);
+              // Add visual indicators for better streaming experience
+              if (currentToolInputJson.length === partial.length) {
+                // First character of the tool input
+                process.stderr.write(`\n🔧 ${lastTool.name} Input (streaming):\n  `);
+              } else if (partial.trim() === '' && currentToolInputJson.trim().endsWith(',')) {
+                // Empty whitespace after comma for better formatting
+                process.stderr.write(partial);
+              } else if (partial === '{' || partial === '[') {
+                // Opening brackets
+                process.stderr.write(partial);
+              } else if (partial === '}' || partial === ']') {
+                // Closing brackets
+                process.stderr.write(partial);
+                process.stderr.write('\n'); // Newline after complete JSON
+              } else {
+                // Regular content
+                process.stderr.write(partial);
+              }
             }
           }
         }
@@ -1540,9 +1568,9 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
           }
         }
 
-        // Log tool input
+        // Log tool input with enhanced context
         if (verbose && block.input && Object.keys(block.input).length > 0) {
-          console.error(`📥 Input:`);
+          console.error(`\n📥 ${block.name} Final Input:`);
           for (const [key, value] of Object.entries(block.input)) {
             if (typeof value === 'string' && value.length > 200) {
               console.error(`  ${key}: ${value.substring(0, 200)}...`);
@@ -1550,9 +1578,13 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
               console.error(`  ${key}: ${JSON.stringify(value)}`);
             }
           }
+          console.error(`  📋 Input size: ${JSON.stringify(block.input).length} characters`);
+        } else if (verbose) {
+          console.error(`\n📥 ${block.name} Input: (empty)`);
         }
 
         try {
+          const startTime = Date.now();
           if (verbose) process.stderr.write(`\n📤 Executing tool...\n`);
 
           // Validate Playwright screenshot parameters
@@ -1576,6 +1608,9 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
             }
           });
 
+          const endTime = Date.now();
+          const executionTime = endTime - startTime;
+
           // Stream tool output in real-time
           if (verbose && result.content) {
             process.stderr.write(`📤 Output:\n`);
@@ -1586,6 +1621,11 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
                 process.stderr.write(`  ${text}\n`);
               }
             }
+          }
+
+          // Log execution summary
+          if (verbose) {
+            process.stderr.write(`\n⏱️  Tool executed in ${executionTime}ms\n`);
           }
 
           // Extract text content from result
@@ -1609,7 +1649,12 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
             }]
           });
         } catch (error) {
-          if (verbose) process.stderr.write(`\n❌ Tool error: ${error.message}\n`);
+          const endTime = Date.now();
+          const executionTime = endTime - startTime;
+          if (verbose) {
+            process.stderr.write(`\n❌ Tool error after ${executionTime}ms: ${error.message}\n`);
+            process.stderr.write(`💡 Error details: ${error.stack || 'No stack trace available'}\n`);
+          }
           messages.push({
             role: 'user',
             content: [{
