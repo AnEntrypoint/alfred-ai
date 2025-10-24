@@ -1788,24 +1788,18 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
           const lastTool = assistantContent[assistantContent.length - 1];
           if (lastTool && lastTool.type === 'tool_use') {
             lastTool.input_json = currentToolInputJson;
-            // Stream partial JSON input directly to console with enhanced visibility (always enabled)
-            // Add visual indicators for better streaming experience
+            // Stream ALL partial JSON input directly to console - always stream token by token
             if (currentToolInputJson.length === partial.length) {
-              // First character of the tool input
+              // First character of the tool input - show header
               process.stderr.write(`\n🔧 ${lastTool.name} Input (streaming):\n  `);
-            } else if (partial.trim() === '' && currentToolInputJson.trim().endsWith(',')) {
-              // Empty whitespace after comma for better formatting
-              process.stderr.write(partial);
-            } else if (partial === '{' || partial === '[') {
-              // Opening brackets
-              process.stderr.write(partial);
-            } else if (partial === '}' || partial === ']') {
-              // Closing brackets
-              process.stderr.write(partial);
-              process.stderr.write('\n'); // Newline after complete JSON
+              process.stderr.write(partial); // Write the first character too
             } else {
-              // Regular content
+              // Write every subsequent token/character as it arrives
               process.stderr.write(partial);
+            }
+            // Add newline only after closing bracket (end of JSON object)
+            if ((partial === '}' || partial === ']') && (partial.length === 1)) {
+              process.stderr.write('\n');
             }
           }
         }
@@ -1869,9 +1863,11 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
           }
         }
 
-        // Log tool input with enhanced context (always enabled)
-        if (block.input && Object.keys(block.input).length > 0) {
-          console.error(`\n📥 ${block.name} Final Input:`);
+        // If we didn't stream the input (e.g., for non-execute tools), log it now
+        // For execute tool, the input was already streamed above
+        const shouldLogInput = block.name !== 'execute' || !block.input;
+        if (shouldLogInput && block.input && Object.keys(block.input).length > 0) {
+          console.error(`\n📥 ${block.name} Input:`);
           for (const [key, value] of Object.entries(block.input)) {
             if (typeof value === 'string' && value.length > 200) {
               console.error(`  ${key}: ${value.substring(0, 200)}...`);
@@ -1879,9 +1875,10 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
               console.error(`  ${key}: ${JSON.stringify(value)}`);
             }
           }
+        }
+        // Log input size summary only after streaming
+        if (block.input && Object.keys(block.input).length > 0) {
           console.error(`  📋 Input size: ${JSON.stringify(block.input).length} characters`);
-        } else {
-          console.error(`\n📥 ${block.name} Input: (empty)`);
         }
 
         const startTime = Date.now();
