@@ -951,6 +951,20 @@ AVAILABLE IN EXECUTE:
             content: [{ type: 'text', text: result }]
           };
         } else {
+          // Try to route unknown tools to appropriate MCP servers
+          const allTools = mcpManager.getAllTools();
+
+          // Search for the tool in all available MCP servers
+          for (const [serverName, tools] of Object.entries(allTools)) {
+            if (Array.isArray(tools) && tools.some(t => t.name === name)) {
+              const result = await mcpManager.callTool(serverName, name, args);
+              return {
+                content: [{ type: 'text', text: result }]
+              };
+            }
+          }
+
+          // Tool not found in any server
           throw new Error(`Unknown tool: ${name}`);
         }
       } catch (error) {
