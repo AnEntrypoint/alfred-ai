@@ -15,6 +15,7 @@ import { fileURLToPath } from 'url';
 import { EventEmitter } from 'events';
 import { tmpdir } from 'os';
 import { v4 as uuidv4 } from 'uuid';
+import * as readline from 'readline';
 import AuthManager from './auth-manager.js';
 
 // Global configuration (loaded after classes are defined)
@@ -799,7 +800,7 @@ class AlfredMCPServer {
       // Add execute tool
       tools.push({
         name: 'execute',
-        description: 'Execute code in the specified runtime',
+        description: 'Execute code in the specified runtime. Preferred order: python > javascript (nodejs) > bash',
         input_schema: {
           type: 'object',
           properties: {
@@ -809,8 +810,8 @@ class AlfredMCPServer {
             },
             runtime: {
               type: 'string',
-              enum: ['nodejs', 'deno', 'bun', 'python', 'bash', 'go', 'rust', 'c', 'cpp'],
-              description: 'Runtime to execute the code in'
+              enum: ['python', 'nodejs', 'bash', 'deno', 'bun', 'go', 'rust', 'c', 'cpp'],
+              description: 'Runtime to execute the code in. Preference order: python > nodejs > bash. Available: nodejs, deno, bun, python, bash, go, rust, c, cpp'
             },
             timeout: {
               type: 'number',
@@ -1602,6 +1603,152 @@ async function runCLIMode(taskPrompt) {
   process.exit(0);
 }
 
+// Interactive prompt handler
+async function runInteractiveMode() {
+  console.error('\n🎯 Alfred AI - Interactive Mode');
+  console.error('Start typing your prompt (Press ESC to cancel, ENTER to execute):\n');
+
+  // Initialize authentication
+  authManager = new AuthManager();
+  try {
+    await authManager.initialize();
+  } catch (err) {
+    console.error('Fatal: Authentication initialization failed');
+    process.exit(1);
+  }
+
+  const authInfo = authManager.getAuthInfo();
+  console.error(`Authentication: ${authInfo.type} - ${authInfo.status}`);
+
+  const apiKey = authManager.getApiKey();
+  if (!apiKey) {
+    console.error('Fatal: No API key available');
+    process.exit(1);
+  }
+
+  // Initialize config for MCP servers
+  try {
+    config = loadConfig();
+  } catch (err) {
+    config = {
+      config: {
+        mcpServers: {
+          'playwright': {
+            'command': 'npx',
+            'args': ['-y', '@playwright/mcp']
+          },
+          'vexify': {
+            'command': 'npx',
+            'args': ['-y', 'vexify@latest', 'mcp']
+          }
+        }
+      },
+      configDir: process.cwd()
+    };
+  }
+
+  mcpManager = new MCPManager();
+  historyManager = new HistoryManager();
+  executionManager = new ExecutionManager();
+
+  const hooksPromise = initializeHooks();
+  const mcpInitPromise = mcpManager.initialize();
+
+  const mcpServer = new AlfredMCPServer();
+  executionManager.mcpManager = mcpManager;
+
+  await Promise.all([hooksPromise, mcpInitPromise]);
+
+  // Create readline interface for interactive input
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stderr,
+    terminal: true
+  });
+
+  let currentPrompt = '';
+  let promptVisible = false;
+
+  // Handle raw key input for ESC and ENTER
+  if (process.stdin.isTTY) {
+    process.stdin.setRawMode(true);
+  }
+
+  process.stdin.on('data', (key) => {
+    const char = key.toString();
+
+    // ESC key (0x1B)
+    if (char === '\u001b') {
+      if (promptVisible) {
+        currentPrompt = '';
+        promptVisible = false;
+        process.stderr.write('\n❌ Prompt cancelled\n');
+        process.stderr.write('\n🎯 Type your prompt (ESC to cancel, ENTER to execute):\n');
+      }
+      return;
+    }
+
+    // ENTER key (0x0D or 0x0A)
+    if (char === '\r' || char === '\n') {
+      if (currentPrompt.trim()) {
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(false);
+        }
+
+        console.error(`\n📝 Executing prompt: ${currentPrompt}\n`);
+
+        // Queue the prompt as an eager prompt and execute
+        historyManager.queueEagerPrompt(
+          'interactive_prompt',
+          '💬 User submitted prompt via interactive mode',
+          currentPrompt
+        );
+
+        // Run the agentic loop
+        runAgenticLoop(currentPrompt, mcpServer, apiKey, true, false, historyManager)
+          .then(() => {
+            console.error('\n✅ Task completed\n');
+            mcpManager.shutdown();
+            rl.close();
+            process.exit(0);
+          })
+          .catch(error => {
+            console.error('Failed to run agent:', error);
+            mcpManager.shutdown();
+            rl.close();
+            process.exit(1);
+          });
+      }
+      return;
+    }
+
+    // Regular character input
+    if (char >= ' ' && char <= '~') {
+      currentPrompt += char;
+      if (!promptVisible) {
+        promptVisible = true;
+        process.stderr.write('\n📝 Prompt: ');
+      }
+      process.stderr.write(char);
+    }
+
+    // Backspace
+    if (char === '\u0008' || char === '\u007F') {
+      if (currentPrompt.length > 0) {
+        currentPrompt = currentPrompt.slice(0, -1);
+        process.stderr.write('\b \b');
+      }
+    }
+  });
+
+  rl.on('close', () => {
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(false);
+    }
+    process.exit(0);
+  });
+}
+
 // Start the server or CLI
 // Check if this file is being run directly (not imported as a module)
 const __filename = fileURLToPath(import.meta.url);
@@ -1614,15 +1761,23 @@ const isMainModule = process.argv[1] && (
 if (isMainModule) {
   const args = process.argv.slice(2);
 
+  // Check for interactive mode: no arguments or 'interactive' flag
+  if (args.length === 0 || args[0] === 'interactive') {
+    runInteractiveMode().catch(error => {
+      console.error('Failed to run interactive mode:', error);
+      process.exit(1);
+    });
+  }
   // Check for CLI mode: any argument that's not 'mcp'
-  if (args.length > 0 && args[0] !== 'mcp') {
+  else if (args.length > 0 && args[0] !== 'mcp') {
     const taskPrompt = args.join(' ');
     runCLIMode(taskPrompt).catch(error => {
       console.error('Failed to run CLI mode:', error);
       process.exit(1);
     });
-  } else {
-    // MCP server mode
+  }
+  // MCP server mode
+  else {
     main().catch(error => {
       console.error('Failed to start MCP server:', error);
       process.exit(1);
