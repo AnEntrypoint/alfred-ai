@@ -337,7 +337,12 @@ class HistoryManager {
     }
 
     if (text.includes('{') && text.includes('}')) {
-      return `JSON data structure with ${Object.keys(JSON.parse(text) || {}).length} fields`;
+      try {
+        const parsed = JSON.parse(text);
+        return `JSON data structure with ${Object.keys(parsed || {}).length} fields`;
+      } catch (e) {
+        // Not valid JSON, continue to default summary
+      }
     }
 
     return `Text content (${text.length} chars): ${text.substring(0, 100)}...`;
