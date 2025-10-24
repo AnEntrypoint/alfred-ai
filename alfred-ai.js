@@ -774,7 +774,10 @@ class ExecutionManager {
       case 'python':
         return { cmd: 'python3', args: [filepath] };
       case 'bash':
-        return { cmd: 'bash', args: [filepath] };
+        // Use bash -c to execute the code directly, allowing proper command interpretation
+        // This enables commands like: npx clasp settings, git status, etc to work correctly
+        const bashCode = fs.readFileSync(filepath, 'utf8');
+        return { cmd: 'bash', args: ['-c', bashCode] };
       case 'go':
         return { cmd: 'go', args: ['run', filepath] };
       case 'rust':
