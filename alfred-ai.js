@@ -156,6 +156,11 @@ class MCPManager extends EventEmitter {
 
     serverState.tools = toolsResult.tools;
     console.error(`[MCP Manager] ✓ ${serverName}: ${serverState.tools.length} tool(s)`);
+    if (serverState.tools.length > 0) {
+      for (const tool of serverState.tools) {
+        console.error(`  - ${tool.name}`);
+      }
+    }
   }
 
   async sendRequest(serverName, request) {
@@ -1324,7 +1329,14 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
     content: taskPrompt
   }];
 
-  if (verbose) console.error('\n🤖 Agent starting...\n');
+  if (verbose) {
+    console.error('\n🤖 Agent starting...\n');
+    console.error('[Tools Available] Total: ' + toolsResult.tools.length);
+    for (const tool of toolsResult.tools) {
+      console.error(`  - ${tool.name}: ${tool.description}`);
+    }
+    console.error('');
+  }
 
   let output = '';
 
