@@ -1739,24 +1739,20 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
           process.stderr.write(text);
           output += text;
         } else if (event.delta.type === 'input_json_delta') {
-          // Stream tool input assembly in real-time
+          // Stream tool input assembly in real-time, character by character
           const partial = event.delta.partial_json;
+          const isFirstChunk = currentToolInputJson.length === 0;
           currentToolInputJson += partial;
           const lastTool = assistantContent[assistantContent.length - 1];
           if (lastTool && lastTool.type === 'tool_use') {
             lastTool.input_json = currentToolInputJson;
-            // Stream ALL partial JSON input directly to console - always stream token by token
-            if (currentToolInputJson.length === partial.length) {
-              // First character of the tool input - show header
+            // Show header only on the first chunk
+            if (isFirstChunk) {
               process.stderr.write(`\n🔧 ${lastTool.name} Input (streaming):\n  `);
-              process.stderr.write(partial); // Write the first character too
-            } else {
-              // Write every subsequent token/character as it arrives
-              process.stderr.write(partial);
             }
-            // Add newline only after closing bracket (end of JSON object)
-            if ((partial === '}' || partial === ']') && (partial.length === 1)) {
-              process.stderr.write('\n');
+            // Write each character individually for true character-by-character streaming
+            for (let i = 0; i < partial.length; i++) {
+              process.stderr.write(partial[i]);
             }
           }
         }
