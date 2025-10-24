@@ -6,6 +6,13 @@
       "args": [
         "built-in-tools-mcp.js"
       ]
+    },
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp"
+      ]
     }
   }
 }
