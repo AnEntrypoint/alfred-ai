@@ -10,14 +10,17 @@ let config, mcpManager, historyManager, executionManager, authManager;
 
 
 class AlfredMCPServer {
-  constructor() {
+  constructor(mcpManager = null, executionManager = null, authManager = null) {
+    this.mcpManager = mcpManager;
+    this.executionManager = executionManager;
+    this.authManager = authManager;
     this.handlers = new Map();
     this.setupHandlers();
   }
 
   setupHandlers() {
     this.handlers.set('tools/list', async (request) => {
-      const tools = ToolSchemaBuilder.buildToolsList(mcpManager);
+      const tools = ToolSchemaBuilder.buildToolsList(this.mcpManager);
       return { tools };
     });
 
@@ -32,16 +35,16 @@ class AlfredMCPServer {
         } else if (name === 'alfred') {
           return await this.handleAlfred(args);
         } else if (['read', 'write', 'edit', 'bash', 'glob', 'grep', 'ls', 'todo'].includes(name)) {
-          const result = await mcpManager.callTool('builtInTools', name, args);
+          const result = await this.mcpManager.callTool('builtInTools', name, args);
           return {
             content: [{ type: 'text', text: result }]
           };
         } else {
-          const allTools = mcpManager.getAllTools();
+          const allTools = this.mcpManager.getAllTools();
 
           for (const [serverName, tools] of Object.entries(allTools)) {
             if (Array.isArray(tools) && tools.some(t => t.name === name)) {
-              const result = await mcpManager.callTool(serverName, name, args);
+              const result = await this.mcpManager.callTool(serverName, name, args);
               return {
                 content: [{ type: 'text', text: result }]
               };
@@ -96,7 +99,7 @@ class AlfredMCPServer {
     }
 
     try {
-      const result = await executionManager.execute(args);
+      const result = await this.executionManager.execute(args);
 
       return {
         content: [{
@@ -118,7 +121,7 @@ class AlfredMCPServer {
 
   async handleKill(args) {
     try {
-      const result = executionManager.kill(args.execId);
+      const result = this.executionManager.kill(args.execId);
       return {
         content: [{
           type: 'text',
@@ -143,27 +146,22 @@ class AlfredMCPServer {
         throw new Error('prompt parameter is required');
       }
 
-      const apiKey = authManager.getApiKey();
+      const apiKey = this.authManager ? this.authManager.getApiKey() : null;
       if (!apiKey) {
         throw new Error('No API key available for Alfred agent');
       }
 
-      if (!historyManager) {
-        historyManager = new HistoryManager();
+      if (!this.executionManager) {
+        throw new Error('No execution manager available');
       }
 
-      if (!executionManager) {
-        executionManager = new ExecutionManager();
-        executionManager.mcpManager = mcpManager;
-      }
-
-      executionManager.resetFinalPromptFlag();
+      this.executionManager.resetFinalPromptFlag();
 
       const output = await runAgenticLoop(prompt, this, apiKey, true, true);
 
       const subAgentId = `alfred_${Date.now()}`;
       const summarizedOutput = output ? output.substring(0, 500) : 'No output';
-      executionManager.queueEagerPrompt(
+      this.executionManager.queueEagerPrompt(
         subAgentId,
         `✅ Sub-agent Alfred completed: ${summarizedOutput}${output && output.length > 500 ? '...' : ''}`,
         output || ''
