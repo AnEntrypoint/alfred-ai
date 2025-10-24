@@ -816,17 +816,39 @@ class AlfredMCPServer {
       const allTools = mcpManager.getAllTools();
       const tools = [];
 
+      // Build execute tool description with dynamic MCP tool list
+      let executeDescription = `Execute code in the specified runtime. Preferred order: python > javascript (nodejs) > bash.
+
+AVAILABLE IN EXECUTE:
+- Built-in tools: read, write, edit, bash, glob, grep, ls, todo
+- MCP Tools (via scripts):`;
+
+      // Add playwright tools to description
+      const playwrightTools = allTools['playwright'] || [];
+      if (playwrightTools.length > 0) {
+        executeDescription += `\n\n[PLAYWRIGHT (${playwrightTools.length} tools)]:`;
+        playwrightTools.forEach(tool => {
+          executeDescription += `\n  • ${tool.name}: ${tool.description}`;
+        });
+      }
+
+      // Add vexify tools to description
+      const vexifyTools = allTools['vexify'] || [];
+      if (vexifyTools.length > 0) {
+        executeDescription += `\n\n[VEXIFY (${vexifyTools.length} tools)]:`;
+        vexifyTools.forEach(tool => {
+          executeDescription += `\n  • ${tool.name}: ${tool.description}`;
+        });
+      }
+
+      executeDescription += `\n\nEnvironment variables available:
+- ALFRED_MCP_TOOLS: JSON string of all available MCP tools
+- CODEMODE_WORKING_DIRECTORY: Current working directory`;
+
       // Add execute tool
       tools.push({
         name: 'execute',
-        description: `Execute code in the specified runtime. Preferred order: python > javascript (nodejs) > bash.
-
-AVAILABLE IN EXECUTE: All built-in tools (read, write, edit, bash, glob, grep, ls, todo) plus MCP tools.
-MCP TOOLS ACCESS: To use MCP tools (Playwright for browser automation, vexify for code search, etc.), write scripts:
-1. PLAYWRIGHT: const playwright = require('playwright'); const browser = await playwright.chromium.launch();
-2. VEXIFY: Code search via environment or Node.js integration
-3. Env vars: ALFRED_MCP_TOOLS (JSON of tools), CODEMODE_WORKING_DIRECTORY
-Examples: Write Node.js scripts using Playwright to test UIs, take screenshots, fill forms`,
+        description: executeDescription,
         input_schema: {
           type: 'object',
           properties: {
