@@ -21,8 +21,18 @@ import AuthManager from './auth-manager.js';
 // Global configuration (loaded after classes are defined)
 let config, mcpManager, historyManager, executionManager, authManager;
 
+// Quiet mode flag - suppresses all debug output except LLM response
+let QUIET_MODE = false;
+
 // Capture original working directory at startup (before any changes)
 const ORIGINAL_CWD = process.cwd();
+
+// Helper function for quiet mode - only logs in debug mode
+function debugLog(...args) {
+  if (!QUIET_MODE) {
+    console.error(...args);
+  }
+}
 
 function loadConfig() {
   const configPath = join(process.cwd(), '.codemode.json');
@@ -62,7 +72,7 @@ class MCPManager extends EventEmitter {
       try {
         await this.startServer(serverName, serverConfig);
       } catch (error) {
-        console.error(`[MCP Manager] Failed to start ${serverName}:`, error.message);
+        debugLog(`[MCP Manager] Failed to start ${serverName}:`, error.message);
       }
     }
 
@@ -70,7 +80,7 @@ class MCPManager extends EventEmitter {
   }
 
   async startServer(serverName, serverConfig) {
-    console.error(`[MCP Manager] Starting ${serverName}...`);
+    debugLog(`[MCP Manager] Starting ${serverName}...`);
 
     // Resolve relative paths
     const resolvedArgs = serverConfig.args.map(arg => {
@@ -124,15 +134,15 @@ class MCPManager extends EventEmitter {
     });
 
     proc.stderr.on('data', (data) => {
-      console.error(`[MCP Manager] ${serverName}:`, data.toString().trim());
+      debugLog(`[MCP Manager] ${serverName}:`, data.toString().trim());
     });
 
     proc.on('error', (err) => {
-      console.error(`[MCP Manager] ${serverName} error:`, err.message);
+      debugLog(`[MCP Manager] ${serverName} error:`, err.message);
     });
 
     proc.on('close', () => {
-      console.error(`[MCP Manager] ${serverName} closed`);
+      debugLog(`[MCP Manager] ${serverName} closed`);
       this.servers.delete(serverName);
     });
 
@@ -160,7 +170,7 @@ class MCPManager extends EventEmitter {
     }
 
     serverState.tools = toolsResult.tools;
-    console.error(`[MCP Manager] ✓ ${serverName}: ${serverState.tools.length} tool(s)`);
+    debugLog(`[MCP Manager] ✓ ${serverName}: ${serverState.tools.length} tool(s)`);
     if (serverState.tools.length > 0) {
       for (const tool of serverState.tools) {
         console.error(`  - ${tool.name}`);
@@ -217,7 +227,7 @@ class MCPManager extends EventEmitter {
 
   shutdown() {
     for (const [serverName, serverState] of this.servers) {
-      console.error(`[MCP Manager] Shutting down ${serverName}`);
+      debugLog(`[MCP Manager] Shutting down ${serverName}`);
       try {
         serverState.process.kill('SIGTERM');
       } catch (error) {
@@ -244,7 +254,7 @@ class HistoryManager {
       output: hookOutput,
       timestamp: Date.now()
     });
-    console.error(`[Hook] ${hookName} added to history`);
+    debugLog(`[Hook] ${hookName} added to history`);
     this.updateTokenCount();
   }
 
@@ -253,7 +263,7 @@ class HistoryManager {
       console.error('[Hooks] No hooks initialized');
       return;
     }
-    console.error(`[Hooks] Initialized ${this.hooks.length} hooks: ${this.hooks.map(h => h.name).join(', ')}`);
+    debugLog(`[Hooks] Initialized ${this.hooks.length} hooks: ${this.hooks.map(h => h.name).join(', ')}`);
   }
 
   recordMcpCall(serverName, toolName, args, result) {
@@ -394,25 +404,25 @@ class HistoryManager {
     if (currentMcpCount > 10) {
       const toRemove = currentMcpCount - 10;
       this.mcpCalls.splice(0, toRemove);
-      console.error(`[History Manager] Cleaned up ${toRemove} old MCP calls`);
+      debugLog(`[History Manager] Cleaned up ${toRemove} old MCP calls`);
     }
 
     if (currentInputCount > 3) {
       const toRemove = currentInputCount - 3;
       this.executeInputs.splice(0, toRemove);
-      console.error(`[History Manager] Cleaned up ${toRemove} old execute inputs`);
+      debugLog(`[History Manager] Cleaned up ${toRemove} old execute inputs`);
     }
 
     if (currentOutputCount > 3) {
       const toRemove = currentOutputCount - 3;
       this.executeOutputs.splice(0, toRemove);
-      console.error(`[History Manager] Cleaned up ${toRemove} old execute outputs`);
+      debugLog(`[History Manager] Cleaned up ${toRemove} old execute outputs`);
     }
 
     if (currentHookCount > 3) {
       const toRemove = currentHookCount - 3;
       this.hooks.splice(0, toRemove);
-      console.error(`[History Manager] Cleaned up ${toRemove} old hooks`);
+      debugLog(`[History Manager] Cleaned up ${toRemove} old hooks`);
     }
 
     // Recalculate tokens after cleanup
@@ -446,7 +456,7 @@ class ExecutionManager {
       timestamp: Date.now()
     };
     this.eagerPrompts.push(prompt);
-    console.error(`[Eager Prompt Queued] ${execId}: ${message}`);
+    debugLog(`[Eager Prompt Queued] ${execId}: ${message}`);
   }
 
   getQueuedPrompts() {
@@ -498,7 +508,7 @@ class ExecutionManager {
     }
 
     const execId = `exec_${this.nextExecId++}`;
-    console.error(`[Execution Manager] Starting execution ${execId}`);
+    debugLog(`[Execution Manager] Starting execution ${execId}`);
 
     try {
       const result = await this.executeCode(code, runtime, timeout, execId);
@@ -510,13 +520,13 @@ class ExecutionManager {
       );
 
       // End-of-execution notification
-      console.error('\n' + '='.repeat(60));
-      console.error('[EXECUTION COMPLETE] Success');
-      console.error(`[EXECUTION COMPLETE] Execution ID: ${execId}`);
-      console.error(`[EXECUTION COMPLETE] Runtime: ${runtime}`);
-      console.error('[EXECUTION COMPLETE] Full output:');
-      console.error(result);
-      console.error('='.repeat(60) + '\n');
+      debugLog('\n' + '='.repeat(60));
+      debugLog('[EXECUTION COMPLETE] Success');
+      debugLog(`[EXECUTION COMPLETE] Execution ID: ${execId}`);
+      debugLog(`[EXECUTION COMPLETE] Runtime: ${runtime}`);
+      debugLog('[EXECUTION COMPLETE] Full output:');
+      debugLog(result);
+      debugLog('='.repeat(60) + '\n');
 
       return {
         success: true,
@@ -531,13 +541,13 @@ class ExecutionManager {
       );
 
       // End-of-execution notification with error
-      console.error('\n' + '='.repeat(60));
-      console.error('[EXECUTION FAILED] Error occurred');
-      console.error(`[EXECUTION FAILED] Execution ID: ${execId}`);
-      console.error(`[EXECUTION FAILED] Runtime: ${runtime}`);
-      console.error('[EXECUTION FAILED] Full error output:');
-      console.error(error.message);
-      console.error('='.repeat(60) + '\n');
+      debugLog('\n' + '='.repeat(60));
+      debugLog('[EXECUTION FAILED] Error occurred');
+      debugLog(`[EXECUTION FAILED] Execution ID: ${execId}`);
+      debugLog(`[EXECUTION FAILED] Runtime: ${runtime}`);
+      debugLog('[EXECUTION FAILED] Full error output:');
+      debugLog(error.message);
+      debugLog('='.repeat(60) + '\n');
 
       return {
         success: false,
@@ -565,7 +575,7 @@ class ExecutionManager {
 
         const command = this.getExecutionCommand(runtime, tempFile);
 
-        console.error(`[execution] Spawning ${command.cmd} with args: ${JSON.stringify(command.args, null, 2)}`);
+        debugLog(`[execution] Spawning ${command.cmd} with args: ${JSON.stringify(command.args, null, 2)}`);
 
         // Pass MCP tools information to execution environment
         const childEnv = {
@@ -582,7 +592,7 @@ class ExecutionManager {
           env: childEnv
         });
 
-        console.error(`[child process hook] PID: ${child.pid}, Command: ${command.cmd}`);
+        debugLog(`[child process hook] PID: ${child.pid}, Command: ${command.cmd}`);
 
         let stdout = '';
         let stderr = '';
@@ -603,7 +613,7 @@ class ExecutionManager {
 
         const timer = setTimeout(() => {
           timeoutTriggered = true;
-          console.error(`[timeout] Execution timeout after ${timeout}ms - process continues in background (PID ${child.pid})`);
+          debugLog(`[timeout] Execution timeout after ${timeout}ms - process continues in background (PID ${child.pid})`);
 
           // Immediately resolve the promise so agent can continue
           const logs = `${stdout}${stderr ? '\nSTDERR:\n' + stderr : ''}`;
@@ -671,8 +681,8 @@ class ExecutionManager {
           const minutes = (validDuration / 60000).toFixed(2);
           const timeDisplay = validDuration > 60000 ? `${minutes}min` : `${seconds}s`;
 
-          console.error(`[close hook] Process exited with code: ${code}`);
-          console.error(`[execution complete] Time: ${timeDisplay}`);
+          debugLog(`[close hook] Process exited with code: ${code}`);
+          debugLog(`[execution complete] Time: ${timeDisplay}`);
 
           // Cleanup temp file
           try {
@@ -686,7 +696,7 @@ class ExecutionManager {
 
           // If timeout was triggered, hand over final logs via eager prompt
           if (timeoutTriggered) {
-            console.error(`[process end] Final logs being handed to agent`);
+            debugLog(`[process end] Final logs being handed to agent`);
             this.queueEagerPrompt(
               execId,
               `✅ Background process (PID ${child.pid}) completed with exit code ${code}. Final logs below.`,
@@ -1184,12 +1194,12 @@ Available Tools:
 
 // Initialize hooks
 async function initializeHooks() {
-  console.error('[Hooks] Initializing system hooks...');
+  debugLog('[Hooks] Initializing system hooks...');
 
   // Get the actual working directory where the command was invoked
   // This ensures hooks run in the user's directory, not the npm/npx cache
   const hookWorkingDir = ORIGINAL_CWD;
-  console.error(`[Hooks] Running hooks in working directory: ${hookWorkingDir}`);
+  debugLog(`[Hooks] Running hooks in working directory: ${hookWorkingDir}`);
 
   // Hook 1: Thorns hook
   try {
@@ -1334,8 +1344,6 @@ async function main() {
 
   console.error('Config loaded from:', join(process.cwd(), '.codemode.json'));
 
-  const authInfo = authManager.getAuthInfo();
-  console.error(`Authentication: ${authInfo.type} - ${authInfo.status}`);
   if (authInfo.creditsReset) {
     console.error(`Credits: ${authInfo.creditsReset}`);
   }
@@ -1528,7 +1536,7 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
       console.error('');
     }
 
-    console.error(`[Tools Summary] Total: ${toolsResult.tools.length} tools available\n`);
+    debugLog(`[Tools Summary] Total: ${toolsResult.tools.length} tools available\n`);
   }
 
   let output = '';
@@ -1841,8 +1849,12 @@ function setupInteractiveInput(onPromptSubmitted) {
 
 // CLI Agent mode - run Anthropic AI agent with the task
 async function runCLIMode(taskPrompt) {
-  console.error('Alfred AI - CLI Mode');
-  console.error('Task:', taskPrompt);
+  // Enable quiet mode to show only prompt and LLM response
+  QUIET_MODE = true;
+
+  console.error('📝 Task:');
+  console.error(taskPrompt);
+  console.error('');
 
   // Initialize authentication
   authManager = new AuthManager();
@@ -1853,8 +1865,6 @@ async function runCLIMode(taskPrompt) {
     process.exit(1);
   }
 
-  const authInfo = authManager.getAuthInfo();
-  console.error(`Authentication: ${authInfo.type} - ${authInfo.status}`);
 
   const apiKey = authManager.getApiKey();
   if (!apiKey) {
@@ -1979,8 +1989,6 @@ async function runInteractiveMode() {
     process.exit(1);
   }
 
-  const authInfo = authManager.getAuthInfo();
-  console.error(`Authentication: ${authInfo.type} - ${authInfo.status}`);
 
   const apiKey = authManager.getApiKey();
   if (!apiKey) {
