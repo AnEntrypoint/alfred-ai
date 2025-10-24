@@ -3,6 +3,94 @@
  * MCP Runtime Helper Functions
  * Provides callable MCP tool functions for code executed via the execute tool.
  * Uses JSON-RPC over stdio to communicate with parent alfred process.
+ *
+ * ⚠️ AGENTIC INSTRUCTIONS FOR CODE EXECUTION
+ *
+ * When executing code through this helper, follow these critical patterns:
+ *
+ * 1. ALWAYS SPECIFY RUNTIME EXPLICITLY
+ *    - When calling execute, ALWAYS pass the runtime parameter
+ *    - Supported runtimes: 'nodejs', 'python', 'bash'
+ *    - Example: execute({ code: "...", runtime: 'nodejs' })
+ *    - The runtime parameter is REQUIRED and must be explicit
+ *
+ * 2. DO NOT SPLIT CODE ACROSS MULTIPLE CALLS
+ *    ❌ WRONG: Multiple calls for sequential code
+ *       execute({ code: "const fs = require('fs');", runtime: 'nodejs' })
+ *       execute({ code: "const data = fs.readFileSync('file.txt');", runtime: 'nodejs' })
+ *       execute({ code: "console.log(data);", runtime: 'nodejs' })
+ *
+ *    ✅ CORRECT: Single call with all code together
+ *       execute({
+ *         code: `
+ *           const fs = require('fs');
+ *           const data = fs.readFileSync('file.txt', 'utf8');
+ *           console.log(data);
+ *         `,
+ *         runtime: 'nodejs'
+ *       })
+ *
+ * 3. GROUP RELATED CODE INTO SENSIBLE CHUNKS
+ *    - Combine logically related operations
+ *    - Keep each execution focused on a single task
+ *    - Chunk sizes: 5-20 lines for simple ops, 20-100 for complex workflows
+ *
+ * 4. ALWAYS INCLUDE ERROR HANDLING
+ *    - Wrap code in try-catch blocks
+ *    - Validate inputs before operations
+ *    - Check return values
+ *    - Exit with appropriate codes (0 for success, 1 for error)
+ *    - Use clear error messages
+ *
+ * 5. MCP TOOLS ARE AVAILABLE IN THIS CONTEXT
+ *    - Use: await mcp.browser_navigate({ url: '...' })
+ *    - Use: await mcp.playwright.<tool>(<args>)
+ *    - Tools are automatically injected - no imports needed
+ *    - All MCP tool calls are asynchronous (return Promises)
+ *
+ * 6. MINIMIZE ARTIFICIAL DELAYS
+ *    - Execute code immediately without setImmediate or artificial delays
+ *    - Operations complete as fast as the runtime allows
+ *    - No fake timeouts or delays
+ *
+ * EXAMPLE - How to write good code for execution:
+ *
+ *   execute({
+ *     code: `
+ *       const mcp = require('/tmp/mcp-runtime-helpers.cjs');
+ *
+ *       async function processData() {
+ *         try {
+ *           // Validate input
+ *           if (!filePath) {
+ *             console.error('Error: File path required');
+ *             process.exit(1);
+ *           }
+ *
+ *           // Do the work
+ *           const fs = require('fs');
+ *           const data = fs.readFileSync(filePath, 'utf8');
+ *           const result = data.toUpperCase();
+ *
+ *           // Validate output
+ *           if (!result) {
+ *             console.error('Error: Processing failed');
+ *             process.exit(1);
+ *           }
+ *
+ *           // Return success
+ *           console.log('Success:', result);
+ *           process.exit(0);
+ *         } catch (error) {
+ *           console.error('Error:', error.message);
+ *           process.exit(1);
+ *         }
+ *       }
+ *
+ *       processData();
+ *     `,
+ *     runtime: 'nodejs'
+ *   })
  */
 
 const readline = require('readline');

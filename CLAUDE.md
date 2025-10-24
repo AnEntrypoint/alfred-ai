@@ -105,127 +105,17 @@ alfred-ai "your task"
 alfred-ai mcp
 ```
 
-## Code Execution Best Practices
+## Code Execution
 
-### ⚠️ Critical Agent Instructions
+When executing code, the runtime will be specified explicitly in the execute tool call. The agent should always provide a `runtime` parameter (e.g., 'nodejs', 'python', 'bash').
 
-When executing code, you MUST follow these patterns to minimize errors:
+**Code execution instructions are documented in `mcp-runtime-helpers.cjs`** - the runtime helper module that executes code. The agentic instructions there describe best practices for code execution, including:
+- Always specifying runtime explicitly
+- Not splitting code across multiple calls
+- Including proper error handling
+- Using MCP tools that are available in the execution context
 
-#### 1. **DO NOT Split Code Per Call**
-❌ WRONG - Multiple calls for sequential code:
-```javascript
-execute({ code: "const fs = require('fs');", runtime: 'nodejs' })
-execute({ code: "const data = fs.readFileSync('file.txt');", runtime: 'nodejs' })
-execute({ code: "console.log(data);", runtime: 'nodejs' })
-```
-
-#### 2. **DO Group Into Sensible Chunks**
-✅ CORRECT - Single call with error handling:
-```javascript
-execute({
-  code: `
-    try {
-      const fs = require('fs');
-      const data = fs.readFileSync('file.txt', 'utf8');
-
-      if (!data) {
-        console.error('Error: File is empty');
-        process.exit(1);
-      }
-
-      console.log('Success:', data.length, 'bytes');
-    } catch (error) {
-      console.error('Error:', error.message);
-      process.exit(1);
-    }
-  `,
-  runtime: 'nodejs'
-})
-```
-
-#### 3. **Always Include Error Handling**
-Every code execution should have:
-- Try-catch or equivalent error handling
-- Input validation before operations
-- Return value checks
-- Clear error messages with exit codes
-- Proper exception handling for edge cases
-
-#### 4. **Chunk Sizing Guidelines**
-- **Small chunks**: 5-20 lines for simple operations
-- **Medium chunks**: 20-50 lines for workflows
-- **Large chunks**: 50-100 lines for complex multi-step processes
-- Never split related code just to reduce line count
-
-#### 5. **When to Split Into Multiple Calls**
-Only split code when:
-- Different runtimes are needed (Python → Bash → Node)
-- Major state changes occur
-- One operation must finish before verifying before next step
-- You need to debug and isolate specific failures
-
-#### 6. **Error Control Flow Patterns**
-
-**Python:**
-```python
-try:
-    result = operation()
-    if not result:
-        print("Error: Operation failed")
-        exit(1)
-    print("Success:", result)
-except Exception as e:
-    print("Error:", e)
-    exit(1)
-```
-
-**JavaScript:**
-```javascript
-try {
-  const result = operation();
-  if (!result) {
-    console.error('Error: Operation failed');
-    process.exit(1);
-  }
-  console.log('Success:', result);
-} catch (error) {
-  console.error('Error:', error.message);
-  process.exit(1);
-}
-```
-
-**Bash:**
-```bash
-#!/bin/bash
-set -e
-if ! result=$(operation); then
-  echo "Error: Operation failed" >&2
-  exit 1
-fi
-echo "Success: $result"
-```
-
-#### 7. **Timing Information**
-After execution completes, you'll see:
-- `Time: 0.45s` for quick operations
-- `Time: 2.33min` for longer tasks
-
-Use this to optimize slow code.
-
-#### 8. **Progress Monitoring**
-For operations over 60 seconds:
-- You'll get a progress notification
-- Long operations may take several minutes
-- Monitor the logs for output
-
-### Benefits of Proper Chunking
-✅ Fewer execution errors
-✅ Better error messages
-✅ Easier debugging
-✅ Clearer execution flow
-✅ More reliable results
-
-See `EXECUTION_GUIDE.md` for detailed examples and patterns.
+See `EXECUTION_GUIDE.md` for detailed examples and implementation patterns.
 
 ## Todo List Management - CRITICAL
 
