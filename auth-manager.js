@@ -14,7 +14,6 @@ class AuthManager {
   async initialize() {
     console.error('[Auth Manager] Checking authentication...');
 
-    // Check for API key or auth token
     this.apiKey = process.env[ENV_API_KEY] || process.env[ENV_AUTH_TOKEN];
 
     if (this.apiKey) {

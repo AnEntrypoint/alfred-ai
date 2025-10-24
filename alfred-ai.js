@@ -1,10 +1,6 @@
 #!/usr/bin/env node
 
-/**
- * Alfred AI - A simplified, SDK-free version of codemode
- * Uses MCP client/server directly without the agent SDK
- * Automatically handles OAuth authentication for Claude Max subscriptions
- */
+
 
 import { spawn, fork } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, unlinkSync, copyFileSync } from 'fs';
@@ -18,10 +14,10 @@ import { v4 as uuidv4 } from 'uuid';
 import * as readline from 'readline';
 import AuthManager from './auth-manager.js';
 
-// Global configuration (loaded after classes are defined)
+
 let config, mcpManager, historyManager, executionManager, authManager;
 
-// Capture original working directory at startup (before any changes)
+
 const ORIGINAL_CWD = process.cwd();
 
 function loadConfig() {
@@ -45,14 +41,14 @@ function loadConfig() {
   }
 }
 
-// MCP Manager - handles direct MCP communication
+
 class MCPManager extends EventEmitter {
   constructor() {
     super();
     this.servers = new Map();
     this.nextId = 0;
-    this.playwrightServers = []; // Track Playwright servers for load balancing
-    this.playwrightServerUsage = new Map(); // Track current usage count per server
+    this.playwrightServers = []; 
+    this.playwrightServerUsage = new Map(); 
   }
 
   async initialize() {
@@ -70,9 +66,7 @@ class MCPManager extends EventEmitter {
   }
 
   async startServer(serverName, serverConfig) {
-    // Start server silently
 
-    // Resolve relative paths
     const resolvedArgs = serverConfig.args.map(arg => {
       if (arg.endsWith('.js') && !arg.startsWith('-') && !arg.startsWith('/')) {
         const resolved = join(config.configDir, arg);
@@ -96,7 +90,6 @@ class MCPManager extends EventEmitter {
 
     this.servers.set(serverName, serverState);
 
-    // Handle responses
     proc.stdout.on('data', (data) => {
       serverState.buffer += data.toString();
       const lines = serverState.buffer.split('\n');
@@ -117,14 +110,12 @@ class MCPManager extends EventEmitter {
               }
             }
           } catch (e) {
-            // Ignore JSON parse errors
           }
         }
       }
     });
 
     proc.stderr.on('data', (data) => {
-      // Silently handle stderr from servers
     });
 
     proc.on('error', (err) => {
@@ -135,7 +126,6 @@ class MCPManager extends EventEmitter {
       this.servers.delete(serverName);
     });
 
-    // Initialize MCP connection
     await this.sendRequest(serverName, {
       jsonrpc: '2.0',
       id: serverState.nextId++,
@@ -147,7 +137,6 @@ class MCPManager extends EventEmitter {
       }
     });
 
-    // Get tools list
     const toolsResult = await this.sendRequest(serverName, {
       jsonrpc: '2.0',
       id: serverState.nextId++,
@@ -160,25 +149,21 @@ class MCPManager extends EventEmitter {
 
     serverState.tools = toolsResult.tools;
     if (serverState.tools.length > 0) {
-      // Log tools loaded on startup for visibility
       const toolNames = serverState.tools.map(t => t.name).join(', ');
       console.error(`[${serverName}] Loaded: ${toolNames}`);
     }
 
-    // Track Playwright servers for load balancing
     if (serverName.startsWith('playwright')) {
       this.playwrightServers.push(serverName);
       this.playwrightServerUsage.set(serverName, 0);
     }
   }
 
-  // Select the least-used Playwright server for isolation in parallel execution
   getPlaywrightServer() {
     if (this.playwrightServers.length === 0) {
-      return 'playwright'; // Fallback to default
+      return 'playwright'; 
     }
 
-    // Find the server with lowest current usage
     let leastUsedServer = this.playwrightServers[0];
     let minUsage = this.playwrightServerUsage.get(leastUsedServer) || 0;
 
@@ -190,14 +175,11 @@ class MCPManager extends EventEmitter {
       }
     }
 
-    // Increment usage count
     this.playwrightServerUsage.set(leastUsedServer, minUsage + 1);
 
-    // Playwright server selected for execution
     return leastUsedServer;
   }
 
-  // Decrement usage when execution completes
   releasePlaywrightServer(serverName) {
     if (this.playwrightServers.includes(serverName)) {
       const currentUsage = this.playwrightServerUsage.get(serverName) || 1;
@@ -234,7 +216,6 @@ class MCPManager extends EventEmitter {
       params: { name: toolName, arguments: args }
     });
 
-    // Store call in history for cleanup
     historyManager.recordMcpCall(serverName, toolName, args, result);
 
     const content = result.content;
@@ -244,9 +225,7 @@ class MCPManager extends EventEmitter {
     return JSON.stringify(result);
   }
 
-  // Handle tool call from JSON-RPC (used by execute environment)
   async handleToolCall(toolName, args) {
-    // Parse tool name to find server (format: mcp__servername__toolname or just toolname for builtInTools)
     let serverName, actualToolName;
 
     if (toolName.startsWith('mcp__')) {
@@ -254,25 +233,21 @@ class MCPManager extends EventEmitter {
       let baseServerName = parts[1];
       actualToolName = parts[2];
 
-      // For Playwright tools, use load-balanced server selection to avoid parallel execution conflicts
       if (baseServerName === 'playwright') {
         serverName = this.getPlaywrightServer();
       } else {
         serverName = baseServerName;
       }
     } else {
-      // Built-in tools don't have mcp__ prefix
       serverName = 'builtInTools';
       actualToolName = toolName;
     }
 
-    // Get server state to use per-server ID counter
     const serverState = this.servers.get(serverName);
     if (!serverState) {
       throw new Error(`MCP server ${serverName} not found`);
     }
 
-    // Call the tool via sendRequest with proper JSON-RPC format using per-server ID
     return await this.sendRequest(serverName, {
       jsonrpc: '2.0',
       id: serverState.nextId++,
@@ -297,14 +272,13 @@ class MCPManager extends EventEmitter {
       try {
         serverState.process.kill('SIGTERM');
       } catch (error) {
-        // Ignore shutdown errors
       }
     }
     this.servers.clear();
   }
 }
 
-// History Manager - handles intelligent cleanup and compaction
+
 class HistoryManager {
   constructor() {
     this.mcpCalls = [];
@@ -341,7 +315,6 @@ class HistoryManager {
       timestamp: Date.now()
     });
 
-    // Cleanup old MCP calls (keep only last 10)
     if (this.mcpCalls.length > 10) {
       const removed = this.mcpCalls.shift();
       this.tokenCount -= this.estimateTokens(removed);
@@ -368,7 +341,6 @@ class HistoryManager {
     this.executeInputs.push(inputRecord);
     this.executeOutputs.push(outputRecord);
 
-    // Hard cutoff at 80 executions - remove oldest
     if (this.executeInputs.length > 80) {
       this.executeInputs.shift();
     }
@@ -378,27 +350,21 @@ class HistoryManager {
 
     this.updateTokenCount();
 
-    // Asynchronously summarize records that are past their raw lifespan
-    // This happens in background without blocking execution
     this.scheduleAsyncSummarization();
   }
 
   scheduleAsyncSummarization() {
-    // Summarize inputs older than 3 (async, non-blocking)
     if (this.executeInputs.length > 3) {
       const toSummarize = this.executeInputs.slice(0, -3);
       for (let i = 0; i < toSummarize.length; i++) {
         const record = toSummarize[i];
         if (!record.summarized && !record.isSummary) {
-          // Mark as being summarized to avoid redundant API calls
           record.summarized = true;
-          // Schedule async summarization (don't await, fire and forget)
           this.summarizeExecutionRecord(record, 'input');
         }
       }
     }
 
-    // Summarize outputs older than 10 (async, non-blocking)
     if (this.executeOutputs.length > 10) {
       const toSummarize = this.executeOutputs.slice(0, -10);
       for (let i = 0; i < toSummarize.length; i++) {
@@ -412,37 +378,28 @@ class HistoryManager {
   }
 
   async summarizeExecutionRecord(record, type) {
-    // This runs asynchronously without blocking the agent
-    // The record data is replaced with a summary once available
     try {
       const dataStr = JSON.stringify(record.data);
 
-      // Don't try to summarize tiny records
       if (dataStr.length < 100) {
         return;
       }
 
-      // Create prompt for summarization
       const summaryPrompt = type === 'input'
         ? `Summarize this code execution input in 1-2 sentences:\n${dataStr.substring(0, 2000)}`
         : `Summarize this code execution output in 1-2 sentences:\n${dataStr.substring(0, 2000)}`;
 
-      // Note: This would call anthropic API if available
-      // For now, we'll use the built-in summary function
       const summary = this.createSummary(dataStr);
 
-      // Replace the data with summary
       record.data = summary;
       record.isSummary = true;
 
       this.updateTokenCount();
     } catch (error) {
-      // Silently handle summarization errors - don't break execution
     }
   }
 
   compactData(data) {
-    // Create intelligent English summaries for older data
     if (typeof data === 'string') {
       if (data.length > 500) {
         return this.createSummary(data);
@@ -466,35 +423,14 @@ class HistoryManager {
   }
 
   createSummary(text) {
-    // Create intelligent English summaries
-    if (text.includes('Error:') || text.includes('error')) {
-      return `Error message about ${text.substring(0, 50)}...`;
-    }
-
-    if (text.includes('console.log') || text.includes('print')) {
-      return `Code execution output with ${text.split('\n').length} lines`;
-    }
-
-    if (text.includes('{') && text.includes('}')) {
-      try {
-        const parsed = JSON.parse(text);
-        return `JSON data structure with ${Object.keys(parsed || {}).length} fields`;
-      } catch (e) {
-        // Not valid JSON, continue to default summary
-      }
-    }
-
-    return `Text content (${text.length} chars): ${text.substring(0, 100)}...`;
+    return text.substring(0, 500);
   }
 
   estimateTokens(data) {
-    // Rough token estimation (1 token ≈ 4 characters)
-    const text = JSON.stringify(data);
-    return Math.ceil(text.length / 4);
+    return JSON.stringify(data).length;
   }
 
   updateTokenCount() {
-    // Calculate total tokens from all stored data
     let totalTokens = 0;
 
     for (const call of this.mcpCalls) {
@@ -517,13 +453,6 @@ class HistoryManager {
   }
 
   performCleanup() {
-    // History cleanup runs once per LLM call
-    // Execution records are managed by recordExecute():
-    //   - Keep last 3 raw inputs, older ones are summarized asynchronously
-    //   - Keep last 10 raw outputs, older ones are summarized asynchronously
-    //   - Hard cutoff at 80 executions total
-    // MCP calls (max 10) - natural limit from recordMcpCall
-    // Hooks (max 3) - naturally preserved
 
     const currentMcpCount = this.mcpCalls.length;
 
@@ -532,7 +461,6 @@ class HistoryManager {
       this.mcpCalls.splice(0, toRemove);
     }
 
-    // Recalculate tokens after cleanup
     this.updateTokenCount();
   }
 
@@ -546,7 +474,7 @@ class HistoryManager {
   }
 }
 
-// Execution Manager - handles code execution without SDK
+
 class ExecutionManager {
   constructor() {
     this.nextExecId = 0;
@@ -586,7 +514,6 @@ class ExecutionManager {
   }
 
   getTodoStatus() {
-    // Get todo status from historyManager if available
     if (typeof historyManager !== 'undefined' && historyManager.getTodos) {
       try {
         const todos = historyManager.getTodos();
@@ -596,10 +523,9 @@ class ExecutionManager {
         return todos;
       } catch (e) {
         console.error(`❌ Error retrieving todos from history: ${e.message}`);
-        throw e; // Re-throw so caller knows there was an error
+        throw e; 
       }
     }
-    // No todo tracking available
     return [];
   }
 
@@ -614,7 +540,6 @@ class ExecutionManager {
       throw new Error('Runtime parameter is required (nodejs, deno, bun, python, bash, go, rust, c, cpp)');
     }
 
-    // Reject executions that attempt to use pkill
     if (code.includes('pkill')) {
       throw new Error('Execution rejected: pkill command is not allowed');
     }
@@ -624,13 +549,11 @@ class ExecutionManager {
     try {
       const result = await this.executeCode(code, runtime, timeout, execId);
 
-      // Store in history
       historyManager.recordExecute(
         { code: this.compactCode(code), runtime },
         { success: true, result: this.compactData(result) }
       );
 
-      // Execution complete - no duplicate output (already streamed)
 
       return {
         success: true,
@@ -638,13 +561,11 @@ class ExecutionManager {
         execId
       };
     } catch (error) {
-      // Store error in history
       historyManager.recordExecute(
         { code: this.compactCode(code), runtime },
         { success: false, error: error.message }
       );
 
-      // Execution error - already logged during execution
 
       return {
         success: false,
@@ -670,7 +591,6 @@ class ExecutionManager {
 
         fs.writeFileSync(tempFile, code);
 
-        // Copy MCP helper module to temp directory for access by executed code
         const __filename = fileURLToPath(import.meta.url);
         const __dirname = dirname(__filename);
         const helperSource = join(__dirname, 'mcp-runtime-helpers.cjs');
@@ -685,12 +605,9 @@ class ExecutionManager {
 
         console.error(`[execution] Spawning ${command.cmd} with args: ${JSON.stringify(command.args, null, 2)}`);
 
-        // Pass MCP tools information to execution environment
         const childEnv = {
           ...process.env,
-          // Export available MCP servers as JSON
           ALFRED_MCP_TOOLS: JSON.stringify(mcpManager ? mcpManager.getAllTools() : {}),
-          // Pass working directory for MCP context (use original cwd where npx was invoked)
           CODEMODE_WORKING_DIRECTORY: ORIGINAL_CWD
         };
 
@@ -704,45 +621,36 @@ class ExecutionManager {
 
         let stdout = '';
         let stderr = '';
-        let stdoutBuffer = ''; // Buffer for JSON-RPC line parsing
+        let stdoutBuffer = ''; 
 
         child.stdout.on('data', async (data) => {
           const output = data.toString();
           stdoutBuffer += output;
 
-          // Process complete lines for JSON-RPC requests
           const lines = stdoutBuffer.split('\n');
-          stdoutBuffer = lines.pop() || ''; // Keep incomplete line in buffer
+          stdoutBuffer = lines.pop() || ''; 
 
           for (const line of lines) {
-            // Check if this line is a JSON-RPC request
             let isJsonRpc = false;
             try {
               const parsed = JSON.parse(line);
               if (parsed.jsonrpc === '2.0' && parsed.method === 'tools/call') {
                 isJsonRpc = true;
-                // Handle MCP tool call from executed code
                 const { id, params } = parsed;
                 const { name: toolName, arguments: toolArgs } = params;
 
-                // Log MCP tool call only if verbose (don't spam console)
-                // Tool call details are usually logged during inference
 
                 try {
-                  // Call the MCP tool
                   const result = await mcpManager.handleToolCall(toolName, toolArgs);
 
-                  // Tool result received (don't log redundantly)
 
                   const response = {
                     jsonrpc: '2.0',
                     id,
                     result
                   };
-                  // Send response back to child process
                   child.stdin.write(JSON.stringify(response) + '\n');
                 } catch (error) {
-                  // MCP tool error (logged during inference if needed)
 
                   const response = {
                     jsonrpc: '2.0',
@@ -756,10 +664,8 @@ class ExecutionManager {
                 }
               }
             } catch (e) {
-              // Not JSON or not a JSON-RPC request, treat as normal output
             }
 
-            // If not JSON-RPC, add to stdout as normal
             if (!isJsonRpc) {
               stdout += line + '\n';
               accumulatedStdout += line + '\n';
@@ -779,14 +685,11 @@ class ExecutionManager {
           timeoutTriggered = true;
           console.error(`[timeout] Execution timeout after ${timeout}ms - process continues in background (PID ${child.pid})`);
 
-          // Immediately resolve the promise so agent can continue
           const logs = `${stdout}${stderr ? '\nSTDERR:\n' + stderr : ''}`;
           const timeoutMessage = `⏱️ Execution timeout after ${timeout}ms. Process (PID ${child.pid}) continues in background. Logs below. Updates every 60s.`;
 
-          // Queue eager prompt for agent awareness
           this.queueEagerPrompt(execId, timeoutMessage, logs);
 
-          // Resolve immediately with timeout message so agent can continue working
           if (!promiseResolved) {
             promiseResolved = true;
             const elapsedMs = Math.max(0, Date.now() - startTime);
@@ -794,12 +697,10 @@ class ExecutionManager {
             resolve(`${timeoutMessage}\n\n${logs}\n\nTime: ${elapsedSeconds}s`);
           }
 
-          // Reset logs for background monitoring
           lastLogSize = 0;
           accumulatedStdout = '';
           accumulatedStderr = '';
 
-          // Start 60-second notification timer for background execution
           const progressTimer = setInterval(() => {
             if (!child.exitCode && !child.killed) {
               const newLogs = `${accumulatedStdout}${accumulatedStderr ? '\nSTDERR:\n' + accumulatedStderr : ''}`;
@@ -815,7 +716,6 @@ class ExecutionManager {
               }
             } else {
               clearInterval(progressTimer);
-              // Final notification when process completes
               this.queueEagerPrompt(
                 execId,
                 `✅ Background process (PID ${child.pid}) completed.`,
@@ -824,11 +724,8 @@ class ExecutionManager {
             }
           }, 60000);
 
-          // Store timer for cleanup
           child._progressTimer = progressTimer;
 
-          // Don't kill process - let it continue running in background
-          // User instructions: "watch and kill it" - process continues until completion
         }, timeout);
 
         child.on('close', (code) => {
@@ -839,7 +736,6 @@ class ExecutionManager {
 
           const endTime = Date.now();
           const duration = endTime - startTime;
-          // Ensure duration is a valid number to prevent NaN
           const validDuration = typeof duration === 'number' && !isNaN(duration) && duration >= 0 ? duration : 0;
           const seconds = (validDuration / 1000).toFixed(2);
           const minutes = (validDuration / 60000).toFixed(2);
@@ -848,17 +744,14 @@ class ExecutionManager {
           console.error(`[close hook] Process exited with code: ${code}`);
           console.error(`[execution complete] Time: ${timeDisplay}`);
 
-          // Cleanup temp file
           try {
             fs.unlinkSync(tempFile);
           } catch (e) {
-            // Ignore cleanup errors
           }
 
           const result = stdout || (stderr ? `Warning: ${stderr}` : 'Execution completed successfully');
           const resultWithTiming = `${result}\n\nTime: ${timeDisplay}`;
 
-          // If timeout was triggered, hand over final logs via eager prompt
           if (timeoutTriggered) {
             console.error(`[process end] Final logs being handed to agent`);
             this.queueEagerPrompt(
@@ -866,11 +759,9 @@ class ExecutionManager {
               `✅ Background process (PID ${child.pid}) completed with exit code ${code}. Final logs below.`,
               `${stdout}${stderr ? '\nSTDERR:\n' + stderr : ''}`
             );
-            // Don't resolve again - timeout already resolved the promise
             return;
           }
 
-          // Only resolve if not already resolved by timeout
           if (!promiseResolved) {
             promiseResolved = true;
             if (code === 0) {
@@ -887,23 +778,19 @@ class ExecutionManager {
             clearInterval(child._progressTimer);
           }
 
-          // Cleanup temp file
           try {
             fs.unlinkSync(tempFile);
           } catch (e) {
-            // Ignore cleanup errors
           }
 
           reject(error);
         });
 
       } catch (error) {
-        // Cleanup temp file if it exists
         if (tempFile) {
           try {
             unlinkSync(tempFile);
           } catch (e) {
-            // Ignore cleanup errors
           }
         }
 
@@ -948,8 +835,6 @@ class ExecutionManager {
       case 'python':
         return { cmd: 'python3', args: [filepath] };
       case 'bash':
-        // Use bash -c to execute the code directly, allowing proper command interpretation
-        // This enables commands like: npx clasp settings, git status, etc to work correctly
         const bashCode = fs.readFileSync(filepath, 'utf8');
         return { cmd: 'bash', args: ['-c', bashCode] };
       case 'go':
@@ -968,7 +853,6 @@ class ExecutionManager {
   }
 
   compactCode(code) {
-    // Create summary of code for history
     if (code.length > 200) {
       const lines = code.split('\n').length;
       const language = this.detectLanguage(code);
@@ -1002,7 +886,7 @@ class ExecutionManager {
   }
 }
 
-// MCP Server implementation
+
 class AlfredMCPServer {
   constructor() {
     this.handlers = new Map();
@@ -1010,12 +894,10 @@ class AlfredMCPServer {
   }
 
   setupHandlers() {
-    // Handle tools/list
     this.handlers.set('tools/list', async (request) => {
       const allTools = mcpManager.getAllTools();
       const tools = [];
 
-      // Build execute tool description with dynamic MCP tool list
       let executeDescription = `Execute code in the specified runtime with EXCLUSIVE access to MCP tool functions via JSON-RPC stdio.
 
 ⚠️ CRITICAL INSTRUCTIONS FOR MCP TOOL USAGE:
@@ -1043,7 +925,6 @@ MCP TOOLS AVAILABLE via JSON-RPC stdio (REQUIRED FOR TESTING):
 To use MCP tools from Node.js code, require the helper module from /tmp:
   const mcp = require('/tmp/mcp-runtime-helpers.cjs');
 
-  // All MCP functions are available as async functions:
   const result = await mcp.browser_navigate({url: 'https://example.com'});
   const screenshot = await mcp.browser_take_screenshot({});
   const snapshot = await mcp.browser_snapshot({});
@@ -1051,7 +932,6 @@ To use MCP tools from Node.js code, require the helper module from /tmp:
 Available MCP functions:
 `;
 
-      // Add Playwright tools
       const playwrightTools = allTools['playwright'] || [];
       if (playwrightTools.length > 0) {
         executeDescription += `\nPlaywright Browser Automation (${playwrightTools.length} functions):\n`;
@@ -1061,7 +941,6 @@ Available MCP functions:
         });
       }
 
-      // Add Vexify tools
       const vexifyTools = allTools['vexify'] || [];
       if (vexifyTools.length > 0) {
         executeDescription += `\nCode Search (${vexifyTools.length} functions):\n`;
@@ -1075,7 +954,6 @@ Available MCP functions:
 - ALFRED_MCP_TOOLS: JSON string of all available MCP tools with full schemas
 - CODEMODE_WORKING_DIRECTORY: Current working directory`;
 
-      // Add execute tool
       tools.push({
         name: 'execute',
         description: executeDescription,
@@ -1101,7 +979,6 @@ Available MCP functions:
         }
       });
 
-      // Add built-in file operation and utility tools with dynamic descriptions from MCP server
       const builtInTools = allTools['builtInTools'] || [];
       const builtInToolNames = ['read', 'write', 'edit', 'bash', 'glob', 'grep', 'ls', 'todo'];
 
@@ -1116,8 +993,6 @@ Available MCP functions:
         }
       }
 
-      // MCP tools (playwright, vexify, etc.) are NOT directly exposed to agent
-      // They are available as function calls within the execute tool environment
 
 
       tools.push({
@@ -1153,7 +1028,6 @@ Available MCP functions:
       return { tools };
     });
 
-    // Handle tools/call
     this.handlers.set('tools/call', async (request) => {
       const { name, arguments: args } = request.params;
 
@@ -1165,16 +1039,13 @@ Available MCP functions:
         } else if (name === 'alfred') {
           return await this.handleAlfred(args);
         } else if (['read', 'write', 'edit', 'bash', 'glob', 'grep', 'ls', 'todo'].includes(name)) {
-          // Delegate built-in tools to the builtInTools MCP server
           const result = await mcpManager.callTool('builtInTools', name, args);
           return {
             content: [{ type: 'text', text: result }]
           };
         } else {
-          // Try to route unknown tools to appropriate MCP servers
           const allTools = mcpManager.getAllTools();
 
-          // Search for the tool in all available MCP servers
           for (const [serverName, tools] of Object.entries(allTools)) {
             if (Array.isArray(tools) && tools.some(t => t.name === name)) {
               const result = await mcpManager.callTool(serverName, name, args);
@@ -1184,33 +1055,27 @@ Available MCP functions:
             }
           }
 
-          // Tool not found in any server
           throw new Error(`Unknown tool: ${name}`);
         }
       } catch (error) {
-        // Return MCP error response for tool errors
-        throw error; // Let the MCP handler format this as a proper error
+        throw error; 
       }
     });
   }
 
   async handleExecute(args) {
-    // Validate parameters according to the schema - let validation errors bubble up
     if (!args || typeof args !== 'object') {
       throw new Error('Invalid arguments: arguments must be an object');
     }
 
-    // Check for required 'code' parameter
     if (args.code === undefined || args.code === null || typeof args.code !== 'string') {
       throw new Error('Invalid arguments: "code" parameter is required and must be a string');
     }
 
-    // Check for required 'runtime' parameter
     if (args.runtime === undefined || args.runtime === null || typeof args.runtime !== 'string') {
       throw new Error('Invalid arguments: "runtime" parameter is required and must be a string');
     }
 
-    // Handle empty code as a special case - return error response but don't throw
     if (args.code.trim() === '') {
       return {
         content: [{
@@ -1221,7 +1086,6 @@ Available MCP functions:
       };
     }
 
-    // Check for allowed parameters
     const allowedParams = ['code', 'runtime', 'timeout'];
     const providedParams = Object.keys(args);
     const invalidParams = providedParams.filter(param => !allowedParams.includes(param));
@@ -1230,17 +1094,14 @@ Available MCP functions:
       throw new Error(`Invalid arguments: unknown parameter(s): ${invalidParams.join(', ')}`);
     }
 
-    // Validate runtime
     if (!['nodejs', 'deno', 'bun', 'python', 'bash', 'go', 'rust', 'c', 'cpp'].includes(args.runtime)) {
       throw new Error(`Invalid arguments: "runtime" must be one of: nodejs, deno, bun, python, bash, go, rust, c, cpp`);
     }
 
-    // Validate timeout if provided
     if (args.timeout && (typeof args.timeout !== 'number' || args.timeout <= 0)) {
       throw new Error('Invalid arguments: "timeout" must be a positive number');
     }
 
-    // Only catch execution errors, not validation errors
     try {
       const result = await executionManager.execute(args);
 
@@ -1294,25 +1155,19 @@ Available MCP functions:
         throw new Error('No API key available for Alfred agent');
       }
 
-      // Ensure history manager is initialized for nested calls
       if (!historyManager) {
         historyManager = new HistoryManager();
       }
 
-      // Ensure execution manager is initialized
       if (!executionManager) {
         executionManager = new ExecutionManager();
         executionManager.mcpManager = mcpManager;
       }
 
-      // Ensure we only trigger final prompt once per handleAlfred call
       executionManager.resetFinalPromptFlag();
 
-      // Exclude alfred tool to prevent recursion
-      // Keep verbose=true for nested calls to maintain observability
       const output = await runAgenticLoop(prompt, this, apiKey, true, true);
 
-      // Queue sub-agent output as eager prompt to main thread
       const subAgentId = `alfred_${Date.now()}`;
       const summarizedOutput = output ? output.substring(0, 500) : 'No output';
       executionManager.queueEagerPrompt(
@@ -1349,7 +1204,7 @@ Available MCP functions:
   }
 }
 
-// Helper function to run a hook process - consolidates duplicate stream handlers
+
 async function runHookProcess(name, command, args, options = {}) {
   const timeout = options.timeout || 10000;
   const cwd = options.cwd || ORIGINAL_CWD;
@@ -1370,7 +1225,6 @@ async function runHookProcess(name, command, args, options = {}) {
       shell
     });
 
-    // Single consolidated stream handlers
     child.stdout.on('data', (data) => { output += data.toString(); });
     child.stderr.on('data', (data) => { stderr += data.toString(); });
 
@@ -1391,16 +1245,13 @@ async function runHookProcess(name, command, args, options = {}) {
   });
 }
 
-// Initialize hooks
+
 async function initializeHooks() {
   console.error('[Hooks] Initializing system hooks...');
 
-  // Get the actual working directory where the command was invoked
-  // This ensures hooks run in the user's directory, not the npm/npx cache
   const hookWorkingDir = ORIGINAL_CWD;
   console.error(`[Hooks] Running hooks in working directory: ${hookWorkingDir}`);
 
-  // Hook 1: Thorns hook
   try {
     const thornsOutput = await runHookProcess('Thorns', 'npx', ['-y', 'mcp-thorns@latest'], {
       cwd: hookWorkingDir,
@@ -1411,7 +1262,6 @@ async function initializeHooks() {
     console.error('[Hooks] ✗ Thorns hook failed:', error.message);
   }
 
-  // Hook 2: Prompt hook (START_MD from remote)
   try {
     const promptOutput = await runHookProcess('Prompt', 'curl', ['-s', 'https://raw.githubusercontent.com/AnEntrypoint/glootie-cc/refs/heads/master/start.md'], {
       cwd: hookWorkingDir
@@ -1421,7 +1271,6 @@ async function initializeHooks() {
     console.error('[Hooks] ✗ Prompt hook failed:', error.message);
   }
 
-  // Hook 3: WFGY hook
   try {
     const wfgyOutput = await runHookProcess('WFGY', 'npx', ['-y', 'wfgy@latest', 'hook'], {
       cwd: hookWorkingDir,
@@ -1432,15 +1281,13 @@ async function initializeHooks() {
     console.error('[Hooks] ✗ WFGY hook failed:', error.message);
   }
 
-  // Log all hooks that were successfully loaded
   historyManager.logHooks();
 }
 
-// Main server loop
+
 async function main() {
   console.error('Alfred AI - Simplified CodeMode with OAuth starting...');
 
-  // Initialize authentication first
   authManager = new AuthManager();
 
   try {
@@ -1450,7 +1297,6 @@ async function main() {
     process.exit(1);
   }
 
-  // Initialize global state
   config = loadConfig();
   mcpManager = new MCPManager();
   historyManager = new HistoryManager();
@@ -1462,20 +1308,16 @@ async function main() {
     console.error(`Credits: ${authInfo.creditsReset}`);
   }
 
-  // Initialize hooks
   await initializeHooks();
 
   const mcpServer = new AlfredMCPServer();
 
-  // Initialize MCP manager
   await mcpManager.initialize();
 
-  // Initialize execution manager
   executionManager.mcpManager = mcpManager;
 
   console.error('Alfred AI ready - Accepting MCP requests via stdio');
 
-  // Handle stdio communication
   process.stdin.setEncoding('utf8');
   let buffer = '';
 
@@ -1511,7 +1353,7 @@ async function main() {
   });
 }
 
-// Signal handlers - handle Ctrl-C gracefully
+
 process.on('SIGINT', () => {
   console.error('\n\nAlfred AI shutting down...');
   if (mcpManager) {
@@ -1528,7 +1370,7 @@ process.on('SIGTERM', () => {
   process.exit(0);
 });
 
-// Error handling
+
 process.on('uncaughtException', (error) => {
   console.error('Uncaught exception:', error);
   if (mcpManager) {
@@ -1542,26 +1384,23 @@ process.on('unhandledRejection', (reason, promise) => {
   process.exit(1);
 });
 
-// Disable buffering on stderr to ensure real-time streaming output
+
 if (process.stderr && typeof process.stderr._handle !== 'undefined') {
   try {
     process.stderr._handle.setBlocking(true);
   } catch (e) {
-    // Ignore if setBlocking not available (some Node versions)
   }
 }
 
-// Shared agentic loop function
+
 async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, excludeAlfred = false, historyManager = null) {
   const Anthropic = (await import('@anthropic-ai/sdk')).default;
 
-  // Get all available tools
   const toolsResult = await mcpServer.handleRequest({
     method: 'tools/list',
     params: {}
   });
 
-  // Filter out alfred tool if excluded (prevents recursion)
   if (excludeAlfred) {
     toolsResult.tools = toolsResult.tools.filter(t => t.name !== 'alfred');
   }
@@ -1571,15 +1410,12 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
     baseURL: process.env.ANTHROPIC_BASE_URL
   });
 
-  // Add environmental context to help agent understand its situation
   const cwd = process.cwd();
   const parentDir = path.dirname(cwd);
   const contextInfo = [];
 
-  // Add working directory context
   contextInfo.push(`Working directory: ${cwd}`);
 
-  // Check for package.json to understand if it's a Node project
   try {
     const pkgPath = path.join(cwd, 'package.json');
     if (fs.existsSync(pkgPath)) {
@@ -1587,23 +1423,19 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
       contextInfo.push(`Current project: ${pkg.name} v${pkg.version}`);
     }
   } catch (e) {
-    // Not a Node project, that's fine
   }
 
-  // Add context about relative paths mentioned in the task
   const relativePathMatch = taskPrompt.match(/\.\.[\/\\]\w+/g);
   if (relativePathMatch) {
     contextInfo.push(`Parent directory: ${parentDir}`);
   }
 
-  // Add hook content if available
   let hooksContent = '';
   if (historyManager && historyManager.hooks.length > 0) {
     const hookPrompts = historyManager.hooks.map(h => h.output).join('\n\n');
     hooksContent = `\n\n${hookPrompts}`;
   }
 
-  // Construct enhanced prompt with context and hooks
   const enhancedPrompt = contextInfo.length > 0
     ? `${taskPrompt}\n\nContext:\n${contextInfo.join('\n')}${hooksContent}`
     : `${taskPrompt}${hooksContent}`;
@@ -1616,7 +1448,6 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
   if (verbose) {
     console.error('\n🤖 Agent starting...\n');
 
-    // Group tools by server
     const toolsByServer = {};
     const builtInTools = [];
 
@@ -1624,7 +1455,6 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
       if (tool.name === 'execute' || tool.name === 'alfred_kill' || tool.name === 'alfred') {
         builtInTools.push(tool);
       } else {
-        // Extract server name from tool name (format: serverName_toolName)
         const parts = tool.name.split('_');
         const serverName = parts[0];
         if (!toolsByServer[serverName]) {
@@ -1634,7 +1464,6 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
       }
     }
 
-    // Display built-in tools
     if (builtInTools.length > 0) {
       console.error('[Built-in Tools]');
       for (const tool of builtInTools) {
@@ -1643,13 +1472,11 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
       console.error('');
     }
 
-    // Display tools by server
     if (Object.keys(toolsByServer).length > 0) {
       console.error('[MCP Server Tools]');
       for (const [serverName, tools] of Object.entries(toolsByServer)) {
         console.error(`  ${serverName} (${tools.length} tools)`);
         for (const tool of tools) {
-          // Extract just the tool name without server prefix
           const toolNameOnly = tool.name.substring(serverName.length + 1);
           console.error(`    • ${toolNameOnly}`);
         }
@@ -1662,13 +1489,10 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
 
   let output = '';
 
-  // Track recently called tools to prevent loops
   const recentToolCalls = [];
 
-  // Run agentic loop
   let continueLoop = true;
   while (continueLoop) {
-    // Cleanup once per LLM iteration to enforce max item limits
     if (historyManager) {
       historyManager.performCleanup();
     }
@@ -1706,24 +1530,20 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
         }
       } else if (event.type === 'content_block_delta') {
         if (event.delta.type === 'text_delta') {
-          // Stream text output in real-time
           const text = event.delta.text;
           currentText += text;
           process.stderr.write(text);
           output += text;
         } else if (event.delta.type === 'input_json_delta') {
-          // Stream tool input assembly in real-time, character by character as it arrives
           const partial = event.delta.partial_json;
           const isFirstChunk = currentToolInputJson.length === 0;
           currentToolInputJson += partial;
           const lastTool = assistantContent[assistantContent.length - 1];
           if (lastTool && lastTool.type === 'tool_use') {
             lastTool.input_json = currentToolInputJson;
-            // Show header only on the first chunk
             if (isFirstChunk) {
               process.stderr.write(`\n🔧 ${lastTool.name} Input (streaming):\n  `);
             }
-            // Write each character individually as it arrives from the API
             for (let i = 0; i < partial.length; i++) {
               process.stderr.write(partial[i]);
             }
@@ -1731,17 +1551,16 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
         }
       } else if (event.type === 'content_block_stop') {
         if (currentThinking) {
-          console.error(''); // newline after streaming text
+          console.error(''); 
           assistantContent.push({ type: 'text', text: currentText });
           currentText = '';
           currentThinking = false;
         } else {
-          // Finalize tool input
           const lastTool = assistantContent[assistantContent.length - 1];
           if (lastTool && lastTool.type === 'tool_use' && lastTool.input_json) {
             try {
               lastTool.input = JSON.parse(lastTool.input_json);
-              console.error(''); // newline after tool input
+              console.error(''); 
             } catch (e) {
               console.error(`\n  (Failed to parse tool input: ${e.message})`);
             }
@@ -1759,38 +1578,30 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
       content: assistantContent
     });
 
-    // Process tool uses
     for (const block of assistantContent) {
       if (block.type === 'tool_use') {
-        // Detect tool calling loops only for tools prone to infinite loops
         const toolName = block.name;
         const toolsToCheckForLoops = [
           'mcp__plugin_glootie-cc_playwright__browser_take_screenshot',
           'mcp__plugin_glootie-cc_playwright__browser_snapshot'
         ];
 
-        // Only track loops for specific problematic tools
         if (toolsToCheckForLoops.includes(toolName)) {
-          // Track recent tool calls (keep last 5)
           recentToolCalls.push(toolName);
           if (recentToolCalls.length > 5) {
             recentToolCalls.shift();
           }
 
-          // Check if we're in a loop (same tool called 3 times in a row)
           if (recentToolCalls.length >= 3) {
             const lastThree = recentToolCalls.slice(-3);
             if (lastThree[0] === lastThree[1] && lastThree[1] === lastThree[2]) {
               console.error(`\n⚠️  Loop detected: ${toolName} called 3 times in a row. Stopping to prevent infinite loop.`);
-              // Stop the loop and return current output
               continueLoop = false;
               break;
             }
           }
         }
 
-        // If we didn't stream the input (e.g., for non-execute tools), log it now
-        // For execute tool, the input was already streamed above
         const shouldLogInput = block.name !== 'execute' || !block.input;
         if (shouldLogInput && block.input && Object.keys(block.input).length > 0) {
           console.error(`\n📥 ${block.name} Input:`);
@@ -1802,7 +1613,6 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
             }
           }
         }
-        // Log input size summary only after streaming
         if (block.input && Object.keys(block.input).length > 0) {
           console.error(`  📋 Input size: ${JSON.stringify(block.input).length} characters`);
         }
@@ -1811,13 +1621,10 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
         try {
           process.stderr.write(`\n📤 Executing tool...\n`);
 
-          // Validate Playwright screenshot parameters
           if (block.name === 'mcp__plugin_glootie-cc_playwright__browser_take_screenshot') {
             const args = block.input || {};
-            // fullPage cannot be used with element screenshots
             if (args.fullPage && (args.element || args.ref)) {
               if (args.fullPage) {
-                // Remove conflicting element parameters if fullPage is set
                 delete args.element;
                 delete args.ref;
               }
@@ -1835,21 +1642,17 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
           const endTime = Date.now();
           const executionTime = endTime - startTime;
 
-          // Stream tool output in real-time
           if (result.content) {
             for (const contentBlock of result.content) {
               if (contentBlock.type === 'text') {
                 const text = contentBlock.text;
-                // Stream output directly to console as it executes
                 process.stderr.write(text);
               }
             }
           }
 
-          // Log execution time only
           process.stderr.write(`\n⏱️  Executed in ${executionTime}ms\n`);
 
-          // Extract text content from result
           let resultText = '';
           if (result.content && Array.isArray(result.content)) {
             for (const contentBlock of result.content) {
@@ -1892,14 +1695,14 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
   return output;
 }
 
-// Setup interactive input listening - allows user to type prompts during agent execution
-// Returns a cleanup function to disable interactive mode
+
+
 function setupInteractiveInput(onPromptSubmitted) {
   let currentPrompt = '';
   let promptVisible = false;
-  let promptHidden = false; // Track if prompt is hidden by ESC
+  let promptHidden = false; 
   let lastEscTime = 0;
-  const escDoubleClickTime = 300; // ms between ESCs for double-tap detection
+  const escDoubleClickTime = 300; 
 
   const redisplayPrompt = () => {
     if (currentPrompt.length > 0 && !promptHidden) {
@@ -1910,7 +1713,6 @@ function setupInteractiveInput(onPromptSubmitted) {
   const dataHandler = (key) => {
     const char = key.toString();
 
-    // Ctrl-C (0x03) - handle SIGINT properly in raw mode
     if (char === '\u0003') {
       process.stderr.write('\n\n🛑 Alfred AI shutting down (Ctrl-C)...\n');
       if (mcpManager) {
@@ -1919,21 +1721,18 @@ function setupInteractiveInput(onPromptSubmitted) {
       process.exit(0);
     }
 
-    // ESC key (0x1B) - hide/clear prompt
     if (char === '\u001b') {
       const now = Date.now();
       const isDoubleEsc = (now - lastEscTime) < escDoubleClickTime;
       lastEscTime = now;
 
       if (isDoubleEsc) {
-        // Double ESC - clear prompt completely
         currentPrompt = '';
         promptVisible = false;
         promptHidden = false;
-        lastEscTime = 0; // Reset double-tap detection
+        lastEscTime = 0; 
         process.stderr.write('\n🗑️  Prompt cleared\n');
       } else {
-        // Single ESC - hide prompt (can type again to show)
         if (promptVisible) {
           promptVisible = false;
           promptHidden = true;
@@ -1943,7 +1742,6 @@ function setupInteractiveInput(onPromptSubmitted) {
       return;
     }
 
-    // ENTER key (0x0D or 0x0A) - submit prompt
     if (char === '\r' || char === '\n') {
       if (currentPrompt.trim()) {
         const submittedPrompt = currentPrompt;
@@ -1952,16 +1750,14 @@ function setupInteractiveInput(onPromptSubmitted) {
         promptHidden = false;
         process.stderr.write('\n');
 
-        // Call the callback with the submitted prompt
         onPromptSubmitted(submittedPrompt);
       }
       return;
     }
 
-    // Regular character input
     if (char >= ' ' && char <= '~') {
       currentPrompt += char;
-      promptHidden = false; // Typing reveals hidden prompt
+      promptHidden = false; 
       if (!promptVisible) {
         promptVisible = true;
         process.stderr.write('\n🎯 Prompt: ');
@@ -1969,7 +1765,6 @@ function setupInteractiveInput(onPromptSubmitted) {
       process.stderr.write(char);
     }
 
-    // Backspace (0x08 or 0x7F)
     if (char === '\u0008' || char === '\u007F') {
       if (currentPrompt.length > 0) {
         currentPrompt = currentPrompt.slice(0, -1);
@@ -1978,13 +1773,11 @@ function setupInteractiveInput(onPromptSubmitted) {
     }
   };
 
-  // Enable raw mode and set up listener
   if (process.stdin.isTTY) {
     process.stdin.setRawMode(true);
   }
   process.stdin.on('data', dataHandler);
 
-  // Return cleanup function and redisplay handler
   return () => {
     process.stdin.removeListener('data', dataHandler);
     if (process.stdin.isTTY) {
@@ -1993,13 +1786,12 @@ function setupInteractiveInput(onPromptSubmitted) {
   };
 }
 
-// CLI Agent mode - run Anthropic AI agent with the task
+
 async function runCLIMode(taskPrompt) {
   console.error('📝 Task:');
   console.error(taskPrompt);
   console.error('');
 
-  // Initialize authentication
   authManager = new AuthManager();
   try {
     await authManager.initialize();
@@ -2015,11 +1807,9 @@ async function runCLIMode(taskPrompt) {
     process.exit(1);
   }
 
-  // Initialize config for MCP servers
   try {
     config = loadConfig();
   } catch (err) {
-    // If no config, create default config with essential MCP servers
     console.error('[Config] No .codemode.json found, using default MCP server configuration');
     config = {
       config: {
@@ -2042,18 +1832,14 @@ async function runCLIMode(taskPrompt) {
   historyManager = new HistoryManager();
   executionManager = new ExecutionManager();
 
-  // Start hooks and MCP initialization in parallel (don't await yet)
   const hooksPromise = initializeHooks();
   const mcpInitPromise = mcpManager.initialize();
 
-  // Continue with other setup while initialization happens in background
   const mcpServer = new AlfredMCPServer();
   executionManager.mcpManager = mcpManager;
 
-  // Block for initialization to complete before running agent loop
   await Promise.all([hooksPromise, mcpInitPromise]);
 
-  // Set up interactive input listening
   let userPrompt = null;
   const cleanupInteractive = setupInteractiveInput((prompt) => {
     userPrompt = prompt;
@@ -2061,18 +1847,15 @@ async function runCLIMode(taskPrompt) {
     executionManager.queueEagerPrompt('cli_interactive', '💬 User submitted interactive prompt during CLI execution', prompt);
   });
 
-  // Run agent with automatic todo-aware resumption
   let currentPrompt = taskPrompt;
   let iterationCount = 0;
-  const maxIterations = 20; // Prevent infinite loops
+  const maxIterations = 20; 
 
   while (iterationCount < maxIterations) {
     iterationCount++;
 
-    // Run the agent loop with current prompt
     await runAgenticLoop(currentPrompt, mcpServer, apiKey, true, false, historyManager);
 
-    // Check for incomplete todo items after agent completes
     if (typeof executionManager !== 'undefined' && executionManager.getTodoStatus) {
       try {
         const todos = executionManager.getTodoStatus();
@@ -2081,27 +1864,22 @@ async function runCLIMode(taskPrompt) {
         if (incompleteTodos.length > 0) {
           console.error(`\n🔄 Found ${incompleteTodos.length} incomplete todo(s). Resuming agent...\n`);
 
-          // Format incomplete todos for the next iteration
           const todoList = incompleteTodos
             .map((t, i) => `${i + 1}. [${t.status}] ${t.content}`)
             .join('\n');
 
-          // Create a continuation prompt that references the incomplete todos
           currentPrompt = `Continue from where you left off. The following items still need to be completed:\n\n${todoList}\n\nPlease continue working on these incomplete items and complete the task.`;
         } else {
-          // All todos are complete
           console.error('\n✅ All todo items completed\n');
           break;
         }
       } catch (e) {
-        // Report the error when checking todos
         console.error(`\n❌ Error checking todo status: ${e.message}\n`);
         console.error(`Error details: ${e.stack}\n`);
         console.error('⚠️  Stopping agent loop due to todo check error\n');
         process.exit(1);
       }
     } else {
-      // No todo tracking available, exit after first iteration
       console.error('\n✅ Task completed\n');
       break;
     }
@@ -2111,19 +1889,17 @@ async function runCLIMode(taskPrompt) {
     console.error('\n⚠️  Reached maximum iterations. Stopping agent loop.\n');
   }
 
-  // Clean up interactive input
   cleanupInteractive();
 
   mcpManager.shutdown();
   process.exit(0);
 }
 
-// Interactive prompt handler
+
 async function runInteractiveMode() {
   console.error('\n🎯 Alfred AI - Interactive Mode');
   console.error('Start typing your prompt (Press ESC to cancel, ENTER to execute):\n');
 
-  // Initialize authentication
   authManager = new AuthManager();
   try {
     await authManager.initialize();
@@ -2139,7 +1915,6 @@ async function runInteractiveMode() {
     process.exit(1);
   }
 
-  // Initialize config for MCP servers
   try {
     config = loadConfig();
   } catch (err) {
@@ -2172,18 +1947,15 @@ async function runInteractiveMode() {
 
   await Promise.all([hooksPromise, mcpInitPromise]);
 
-  // Set up interactive input listening for prompt submission
   const cleanupInteractive = setupInteractiveInput((prompt) => {
     console.error(`\n📝 Executing prompt: ${prompt}\n`);
 
-    // Queue the prompt as an eager prompt
     historyManager.queueEagerPrompt(
       'interactive_prompt',
       '💬 User submitted prompt via interactive mode',
       prompt
     );
 
-    // Run the agentic loop
     runAgenticLoop(prompt, mcpServer, apiKey, true, false, historyManager)
       .then(() => {
         console.error('\n✅ Task completed\n');
@@ -2200,8 +1972,8 @@ async function runInteractiveMode() {
   });
 }
 
-// Start the server or CLI
-// Check if this file is being run directly (not imported as a module)
+
+
 const __filename = fileURLToPath(import.meta.url);
 const isMainModule = process.argv[1] && (
   resolve(process.argv[1]) === __filename ||
@@ -2212,14 +1984,12 @@ const isMainModule = process.argv[1] && (
 if (isMainModule) {
   const args = process.argv.slice(2);
 
-  // Check for interactive mode: no arguments or 'interactive' flag
   if (args.length === 0 || args[0] === 'interactive') {
     runInteractiveMode().catch(error => {
       console.error('Failed to run interactive mode:', error);
       process.exit(1);
     });
   }
-  // Check for CLI mode: any argument that's not 'mcp'
   else if (args.length > 0 && args[0] !== 'mcp') {
     const taskPrompt = args.join(' ');
     runCLIMode(taskPrompt).catch(error => {
@@ -2227,7 +1997,6 @@ if (isMainModule) {
       process.exit(1);
     });
   }
-  // MCP server mode
   else {
     main().catch(error => {
       console.error('Failed to start MCP server:', error);
