@@ -105,17 +105,41 @@ alfred-ai "your task"
 alfred-ai mcp
 ```
 
-## Code Execution
+## Code Execution & Tool Selection
 
-When executing code, the runtime will be specified explicitly in the execute tool call. The agent should always provide a `runtime` parameter (e.g., 'nodejs', 'python', 'bash').
+### Language-Agnostic Tool Selection
+**CRITICAL: Choose execution language/tools based on the TASK, not the codebase language.**
 
-**Code execution instructions are documented in `mcp-runtime-helpers.cjs`** - the runtime helper module that executes code. The agentic instructions there describe best practices for code execution, including:
-- Always specifying runtime explicitly
+The codebase is JavaScript, but when editing/analyzing code:
+- Use **glootie-cc AST tools** (via nodejs execution) for code search, pattern matching, and structural edits
+- Use **playwright/browser tools** for testing/debugging UI code or running live browser tests
+- Use **bash/python** for system operations, file processing, or data transformation
+- Use **nodejs** for JavaScript execution, but also for running AST analysis via glootie-cc
+
+Example: Even in a JavaScript codebase, if you need to verify regex patterns or test complex transformations, use **python** execution for clearer syntax. Don't force JavaScript just because it's a JS project.
+
+### Runtime Selection Rules
+1. **Pick the tool that gives you the best capabilities for the task**
+   - Searching code patterns? → glootie-cc AST (nodejs)
+   - Testing UI components? → playwright (browser tools)
+   - Processing files? → bash or python
+   - Complex logic testing? → Use language that makes testing clearest
+
+2. **Always specify runtime explicitly**
+   - Provide `runtime` parameter in execute calls
+   - Options: nodejs, python, bash, deno, bun, go, rust, c, cpp
+
+3. **No splitting across calls**
+   - Complete logic in single execution
+   - Include proper error handling
+   - Use MCP tools available in execution context
+
+### Code Execution Implementation
+**Code execution is powered by `mcp-runtime-helpers.cjs`** - the runtime helper module that provides access to MCP tools from executed code. Best practices:
+- Always specify runtime explicitly
 - Not splitting code across multiple calls
 - Including proper error handling
 - Using MCP tools that are available in the execution context
-
-See `EXECUTION_GUIDE.md` for detailed examples and implementation patterns.
 
 ## Todo List Management - CRITICAL
 
