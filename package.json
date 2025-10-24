@@ -1,6 +1,6 @@
 {
   "name": "alfred-ai",
-  "version": "5.20.2",
+  "version": "5.20.4",
   "description": "Alfred AI - A simplified, SDK-free version of codemode using direct MCP client/server communication with automatic OAuth authentication",
   "main": "alfred-ai.js",
   "type": "module",
