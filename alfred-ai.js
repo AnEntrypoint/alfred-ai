@@ -21,6 +21,9 @@ import AuthManager from './auth-manager.js';
 // Global configuration (loaded after classes are defined)
 let config, mcpManager, historyManager, executionManager, authManager;
 
+// Capture original working directory at startup (before any changes)
+const ORIGINAL_CWD = process.cwd();
+
 function loadConfig() {
   const configPath = join(process.cwd(), '.codemode.json');
 
@@ -80,7 +83,7 @@ class MCPManager extends EventEmitter {
 
     const proc = spawn(serverConfig.command, resolvedArgs, {
       stdio: ['pipe', 'pipe', 'pipe'],
-      cwd: process.cwd()
+      cwd: ORIGINAL_CWD
     });
 
     const serverState = {
@@ -551,13 +554,13 @@ class ExecutionManager {
           ...process.env,
           // Export available MCP servers as JSON
           ALFRED_MCP_TOOLS: JSON.stringify(mcpManager ? mcpManager.getAllTools() : {}),
-          // Pass working directory for MCP context
-          CODEMODE_WORKING_DIRECTORY: process.cwd()
+          // Pass working directory for MCP context (use original cwd where npx was invoked)
+          CODEMODE_WORKING_DIRECTORY: ORIGINAL_CWD
         };
 
         const child = spawn(command.cmd, command.args, {
           stdio: ['pipe', 'pipe', 'pipe'],
-          cwd: process.cwd(),
+          cwd: ORIGINAL_CWD,
           env: childEnv
         });
 
@@ -1102,7 +1105,7 @@ async function initializeHooks() {
 
   // Get the actual working directory where the command was invoked
   // This ensures hooks run in the user's directory, not the npm/npx cache
-  const hookWorkingDir = process.cwd();
+  const hookWorkingDir = ORIGINAL_CWD;
   console.error(`[Hooks] Running hooks in working directory: ${hookWorkingDir}`);
 
   // Hook 1: Thorns hook
