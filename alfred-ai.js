@@ -560,7 +560,6 @@ class ExecutionManager {
           const output = data.toString();
           stdout += output;
           accumulatedStdout += output;
-          console.error(`[stdout hook] Received ${output.length} bytes:\n${output}`);
           process.stderr.write(output);
         });
 
@@ -568,7 +567,6 @@ class ExecutionManager {
           const output = data.toString();
           stderr += output;
           accumulatedStderr += output;
-          console.error(`[stderr hook] Received ${output.length} bytes:\n${output}`);
           process.stderr.write(output);
         });
 
