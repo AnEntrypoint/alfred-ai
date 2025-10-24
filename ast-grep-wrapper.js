@@ -1,4 +1,5 @@
-// AST-grep wrapper for universal cross-platform AST-based linting
+import { LINTING_RULES } from './linting-rules.js';
+
 let astGrep = null;
 let astGrepAvailable = false;
 let universalIgnorePatterns = [];
@@ -85,69 +86,6 @@ export function ensureAstGrepAvailable() {
     );
   }
 }
-
-// Common linting rules for universal code quality
-export const LINTING_RULES = {
-  // JavaScript/TypeScript rules
-  javascript: [
-    {
-      name: 'console-statements',
-      pattern: 'console.log($$$)',
-      message: 'Console statement found - should be removed for production',
-      severity: 'warning'
-    },
-    {
-      name: 'debugger-statements',
-      pattern: 'debugger',
-      message: 'Debugger statement found - must be removed before production',
-      severity: 'error'
-    },
-    {
-      name: 'var-declarations',
-      pattern: 'var $NAME',
-      message: 'Use const or let instead of var for better scoping',
-      severity: 'warning'
-    },
-    {
-      name: 'todo-comments',
-      pattern: '// TODO',
-      message: 'TODO comment found - should be addressed',
-      severity: 'info'
-    },
-    {
-      name: 'fixme-comments',
-      pattern: '// FIXME',
-      message: 'FIXME comment found - should be addressed',
-      severity: 'warning'
-    }
-  ],
-
-  // React/JSX rules
-  react: [
-    {
-      name: 'console-in-react',
-      pattern: 'console.log($$$)',
-      message: 'Console statement in React component',
-      severity: 'warning'
-    },
-    {
-      name: 'react-keys-missing',
-      pattern: '{$$$}.map($ITEM => <$COMPONENT $$$)',
-      message: 'Array.map without key prop - React performance issue',
-      severity: 'warning'
-    }
-  ],
-
-  // General patterns across all languages
-  universal: [
-    {
-      name: 'hardcoded-secrets',
-      pattern: 'api_key|secret|password|token',
-      message: 'Potential hardcoded secret detected',
-      severity: 'error'
-    }
-  ]
-};
 
 export class ASTLinter {
   constructor(workingDirectory = process.cwd()) {
