@@ -1505,8 +1505,19 @@ async function runCLIMode(taskPrompt) {
   try {
     config = loadConfig();
   } catch (err) {
-    // If no config, create minimal config
-    config = { config: { mcpServers: {} }, configDir: process.cwd() };
+    // If no config, create default config with essential MCP servers
+    console.error('[Config] No .codemode.json found, using default MCP server configuration');
+    config = {
+      config: {
+        mcpServers: {
+          'playwright': {
+            'command': 'npx',
+            'args': ['-y', '@playwright/mcp']
+          }
+        }
+      },
+      configDir: process.cwd()
+    };
   }
 
   mcpManager = new MCPManager();
