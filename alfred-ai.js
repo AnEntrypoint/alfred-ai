@@ -1506,12 +1506,24 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
             }
           }
 
+          // Extract text content from result
+          let resultText = '';
+          if (result.content && Array.isArray(result.content)) {
+            for (const contentBlock of result.content) {
+              if (contentBlock.type === 'text') {
+                resultText += contentBlock.text;
+              }
+            }
+          } else if (typeof result.content === 'string') {
+            resultText = result.content;
+          }
+
           messages.push({
             role: 'user',
             content: [{
               type: 'tool_result',
               tool_use_id: block.id,
-              content: JSON.stringify(result.content)
+              content: resultText
             }]
           });
         } catch (error) {
