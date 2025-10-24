@@ -946,23 +946,37 @@ class AlfredMCPServer {
       const tools = [];
 
       // Build execute tool description with dynamic MCP tool list
-      let executeDescription = `Execute code in the specified runtime with access to MCP tool functions via JSON-RPC.
+      let executeDescription = `Execute code in the specified runtime with EXCLUSIVE access to MCP tool functions via JSON-RPC stdio.
 
-CRITICAL: The code you provide will be written to a temp file and executed directly by the runtime interpreter.
-- For nodejs runtime: Provide pure JavaScript code (like you'd put in a .js file)
-- For python runtime: Provide pure Python code (like you'd put in a .py file)
-- For bash runtime: Provide bash script code (like you'd put in a .sh file)
+⚠️ CRITICAL INSTRUCTIONS FOR MCP TOOL USAGE:
+- You MUST use MCP tools ONLY through the JSON-RPC helper in executed code
+- You MUST NOT use any CLI versions of these tools (e.g., no 'playwright' command, no browser CLIs)
+- ALL MCP tool interactions must happen via require('/tmp/mcp-runtime-helpers.cjs') in nodejs
+- Every task involving testing/browsing/searching MUST use these MCP functions
+- Write your code as pure JavaScript/Python/Bash that calls the MCP tools via the helper
+
+CODE EXECUTION RULES:
+- Provide pure source code (NOT shell commands or invocations)
+- For nodejs runtime: Pure JavaScript code (like you'd put in a .js file)
+- For python runtime: Pure Python code (like you'd put in a .py file)
+- For bash runtime: Bash script code (like you'd put in a .sh file)
 
 DO NOT:
+- Use CLI tools like 'playwright', 'npx playwright', 'python -m pytest' etc.
 - Mix syntax from different languages (e.g., # comments in JavaScript)
-- Include shell commands like "node -e" or "python -c"
+- Include shell commands like "node -e" or "python -c" - just provide raw source code
+- Try to access Playwright/other tools except through the JSON-RPC helper
 
 Preference order: python > nodejs > bash
 
-MCP TOOLS AVAILABLE via JSON-RPC stdio:
-To use MCP tools from Node.js, require the helper module from /tmp:
+MCP TOOLS AVAILABLE via JSON-RPC stdio (REQUIRED FOR TESTING):
+To use MCP tools from Node.js code, require the helper module from /tmp:
   const mcp = require('/tmp/mcp-runtime-helpers.cjs');
-  await mcp.browser_navigate({url: 'https://example.com'});
+
+  // All MCP functions are available as async functions:
+  const result = await mcp.browser_navigate({url: 'https://example.com'});
+  const screenshot = await mcp.browser_take_screenshot({});
+  const snapshot = await mcp.browser_snapshot({});
 
 Available MCP functions:
 `;
