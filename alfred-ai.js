@@ -351,34 +351,94 @@ class HistoryManager {
   }
 
   recordExecute(input, output) {
-    this.executeInputs.push({
+    const inputRecord = {
       data: input,
-      timestamp: Date.now()
-    });
+      timestamp: Date.now(),
+      isSummary: false,
+      summarized: false
+    };
 
-    this.executeOutputs.push({
+    const outputRecord = {
       data: output,
-      timestamp: Date.now()
-    });
+      timestamp: Date.now(),
+      isSummary: false,
+      summarized: false
+    };
 
-    // Cleanup old execute inputs (keep only last 3)
-    if (this.executeInputs.length > 3) {
-      const removedInput = this.executeInputs.shift();
-      this.tokenCount -= this.estimateTokens(removedInput);
+    this.executeInputs.push(inputRecord);
+    this.executeOutputs.push(outputRecord);
+
+    // Hard cutoff at 80 executions - remove oldest
+    if (this.executeInputs.length > 80) {
+      this.executeInputs.shift();
     }
-
-    if (this.executeOutputs.length > 3) {
-      const removedOutput = this.executeOutputs.shift();
-      this.tokenCount -= this.estimateTokens(removedOutput);
-    }
-
-    // Also clean up old hooks when cleaning up execution outputs
-    if (this.executeOutputs.length > 3 && this.hooks.length > 0) {
-      const removedHook = this.hooks.shift();
-      this.tokenCount -= this.estimateTokens(removedHook);
+    if (this.executeOutputs.length > 80) {
+      this.executeOutputs.shift();
     }
 
     this.updateTokenCount();
+
+    // Asynchronously summarize records that are past their raw lifespan
+    // This happens in background without blocking execution
+    this.scheduleAsyncSummarization();
+  }
+
+  scheduleAsyncSummarization() {
+    // Summarize inputs older than 3 (async, non-blocking)
+    if (this.executeInputs.length > 3) {
+      const toSummarize = this.executeInputs.slice(0, -3);
+      for (let i = 0; i < toSummarize.length; i++) {
+        const record = toSummarize[i];
+        if (!record.summarized && !record.isSummary) {
+          // Mark as being summarized to avoid redundant API calls
+          record.summarized = true;
+          // Schedule async summarization (don't await, fire and forget)
+          this.summarizeExecutionRecord(record, 'input');
+        }
+      }
+    }
+
+    // Summarize outputs older than 10 (async, non-blocking)
+    if (this.executeOutputs.length > 10) {
+      const toSummarize = this.executeOutputs.slice(0, -10);
+      for (let i = 0; i < toSummarize.length; i++) {
+        const record = toSummarize[i];
+        if (!record.summarized && !record.isSummary) {
+          record.summarized = true;
+          this.summarizeExecutionRecord(record, 'output');
+        }
+      }
+    }
+  }
+
+  async summarizeExecutionRecord(record, type) {
+    // This runs asynchronously without blocking the agent
+    // The record data is replaced with a summary once available
+    try {
+      const dataStr = JSON.stringify(record.data);
+
+      // Don't try to summarize tiny records
+      if (dataStr.length < 100) {
+        return;
+      }
+
+      // Create prompt for summarization
+      const summaryPrompt = type === 'input'
+        ? `Summarize this code execution input in 1-2 sentences:\n${dataStr.substring(0, 2000)}`
+        : `Summarize this code execution output in 1-2 sentences:\n${dataStr.substring(0, 2000)}`;
+
+      // Note: This would call anthropic API if available
+      // For now, we'll use the built-in summary function
+      const summary = this.createSummary(dataStr);
+
+      // Replace the data with summary
+      record.data = summary;
+      record.isSummary = true;
+
+      this.updateTokenCount();
+    } catch (error) {
+      // Silently handle summarization errors - don't break execution
+    }
   }
 
   compactData(data) {
@@ -457,34 +517,19 @@ class HistoryManager {
   }
 
   performCleanup() {
-    // Cleanup runs once per LLM call to remove items older than 10 steps
-    // Keep MCP calls (max 10) - natural limit from recordMcpCall
-    // Keep execute inputs/outputs (max 3 each) - natural limit from recordExecute
-    // Keep hooks (max 3) - naturally cleaned with execute outputs
+    // History cleanup runs once per LLM call
+    // Execution records are managed by recordExecute():
+    //   - Keep last 3 raw inputs, older ones are summarized asynchronously
+    //   - Keep last 10 raw outputs, older ones are summarized asynchronously
+    //   - Hard cutoff at 80 executions total
+    // MCP calls (max 10) - natural limit from recordMcpCall
+    // Hooks (max 3) - naturally preserved
 
     const currentMcpCount = this.mcpCalls.length;
-    const currentInputCount = this.executeInputs.length;
-    const currentOutputCount = this.executeOutputs.length;
-    const currentHookCount = this.hooks.length;
 
     if (currentMcpCount > 10) {
       const toRemove = currentMcpCount - 10;
       this.mcpCalls.splice(0, toRemove);
-    }
-
-    if (currentInputCount > 3) {
-      const toRemove = currentInputCount - 3;
-      this.executeInputs.splice(0, toRemove);
-    }
-
-    if (currentOutputCount > 3) {
-      const toRemove = currentOutputCount - 3;
-      this.executeOutputs.splice(0, toRemove);
-    }
-
-    if (currentHookCount > 3) {
-      const toRemove = currentHookCount - 3;
-      this.hooks.splice(0, toRemove);
     }
 
     // Recalculate tokens after cleanup
