@@ -56,23 +56,21 @@ class MCPManager extends EventEmitter {
   }
 
   async initialize() {
-    console.error('[MCP Manager] Initializing servers...');
-
+    console.error('[MCP] Initializing servers...');
     for (const [serverName, serverConfig] of Object.entries(config.config.mcpServers)) {
       if (serverName === 'alfred-ai') continue;
 
       try {
         await this.startServer(serverName, serverConfig);
       } catch (error) {
-        console.error(`[MCP Manager] Failed to start ${serverName}:`, error.message);
+        console.error(`[${serverName}] Error: ${error.message}`);
       }
     }
-
-    console.error('[MCP Manager] Initialization complete');
+    console.error('[MCP] Ready\n');
   }
 
   async startServer(serverName, serverConfig) {
-    console.error(`[MCP Manager] Starting ${serverName}...`);
+    // Start server silently
 
     // Resolve relative paths
     const resolvedArgs = serverConfig.args.map(arg => {
@@ -126,15 +124,14 @@ class MCPManager extends EventEmitter {
     });
 
     proc.stderr.on('data', (data) => {
-      console.error(`[MCP Manager] ${serverName}:`, data.toString().trim());
+      // Silently handle stderr from servers
     });
 
     proc.on('error', (err) => {
-      console.error(`[MCP Manager] ${serverName} error:`, err.message);
+      console.error(`[Server Error] ${serverName}: ${err.message}`);
     });
 
     proc.on('close', () => {
-      console.error(`[MCP Manager] ${serverName} closed`);
       this.servers.delete(serverName);
     });
 
@@ -162,18 +159,16 @@ class MCPManager extends EventEmitter {
     }
 
     serverState.tools = toolsResult.tools;
-    console.error(`[MCP Manager] ✓ ${serverName}: ${serverState.tools.length} tool(s)`);
     if (serverState.tools.length > 0) {
-      for (const tool of serverState.tools) {
-        console.error(`  - ${tool.name}`);
-      }
+      // Log tools loaded on startup for visibility
+      const toolNames = serverState.tools.map(t => t.name).join(', ');
+      console.error(`[${serverName}] Loaded: ${toolNames}`);
     }
 
     // Track Playwright servers for load balancing
     if (serverName.startsWith('playwright')) {
       this.playwrightServers.push(serverName);
       this.playwrightServerUsage.set(serverName, 0);
-      console.error(`[MCP Manager] Registered Playwright server: ${serverName} (total: ${this.playwrightServers.length})`);
     }
   }
 
@@ -198,7 +193,7 @@ class MCPManager extends EventEmitter {
     // Increment usage count
     this.playwrightServerUsage.set(leastUsedServer, minUsage + 1);
 
-    console.error(`[MCP Manager] Selected Playwright server: ${leastUsedServer} (usage: ${minUsage + 1})`);
+    // Playwright server selected for execution
     return leastUsedServer;
   }
 
@@ -207,7 +202,6 @@ class MCPManager extends EventEmitter {
     if (this.playwrightServers.includes(serverName)) {
       const currentUsage = this.playwrightServerUsage.get(serverName) || 1;
       this.playwrightServerUsage.set(serverName, Math.max(0, currentUsage - 1));
-      console.error(`[MCP Manager] Released Playwright server: ${serverName} (usage: ${Math.max(0, currentUsage - 1)})`);
     }
   }
 
@@ -300,7 +294,6 @@ class MCPManager extends EventEmitter {
 
   shutdown() {
     for (const [serverName, serverState] of this.servers) {
-      console.error(`[MCP Manager] Shutting down ${serverName}`);
       try {
         serverState.process.kill('SIGTERM');
       } catch (error) {
@@ -586,7 +579,6 @@ class ExecutionManager {
     }
 
     const execId = `exec_${this.nextExecId++}`;
-    console.error(`[Execution Manager] Starting execution ${execId}`);
 
     try {
       const result = await this.executeCode(code, runtime, timeout, execId);
@@ -597,14 +589,7 @@ class ExecutionManager {
         { success: true, result: this.compactData(result) }
       );
 
-      // End-of-execution notification
-      console.error('\n' + '='.repeat(60));
-      console.error('[EXECUTION COMPLETE] Success');
-      console.error(`[EXECUTION COMPLETE] Execution ID: ${execId}`);
-      console.error(`[EXECUTION COMPLETE] Runtime: ${runtime}`);
-      console.error('[EXECUTION COMPLETE] Full output:');
-      console.error(result);
-      console.error('='.repeat(60) + '\n');
+      // Execution complete - no duplicate output (already streamed)
 
       return {
         success: true,
@@ -618,14 +603,7 @@ class ExecutionManager {
         { success: false, error: error.message }
       );
 
-      // End-of-execution notification with error
-      console.error('\n' + '='.repeat(60));
-      console.error('[EXECUTION FAILED] Error occurred');
-      console.error(`[EXECUTION FAILED] Execution ID: ${execId}`);
-      console.error(`[EXECUTION FAILED] Runtime: ${runtime}`);
-      console.error('[EXECUTION FAILED] Full error output:');
-      console.error(error.message);
-      console.error('='.repeat(60) + '\n');
+      // Execution error - already logged during execution
 
       return {
         success: false,
@@ -706,20 +684,14 @@ class ExecutionManager {
                 const { id, params } = parsed;
                 const { name: toolName, arguments: toolArgs } = params;
 
-                // Log MCP tool call to console for visibility
-                process.stderr.write(`🔧 MCP Tool Call: ${toolName}\n`);
-                if (Object.keys(toolArgs).length > 0) {
-                  process.stderr.write(`   Args: ${JSON.stringify(toolArgs, null, 2).split('\n').join('\n   ')}\n`);
-                }
+                // Log MCP tool call only if verbose (don't spam console)
+                // Tool call details are usually logged during inference
 
                 try {
                   // Call the MCP tool
                   const result = await mcpManager.handleToolCall(toolName, toolArgs);
 
-                  // Log result to console
-                  const resultStr = JSON.stringify(result);
-                  const resultPreview = resultStr.length > 200 ? resultStr.substring(0, 200) + '...' : resultStr;
-                  process.stderr.write(`✅ MCP Result: ${resultPreview}\n`);
+                  // Tool result received (don't log redundantly)
 
                   const response = {
                     jsonrpc: '2.0',
@@ -729,8 +701,7 @@ class ExecutionManager {
                   // Send response back to child process
                   child.stdin.write(JSON.stringify(response) + '\n');
                 } catch (error) {
-                  // Log error to console
-                  process.stderr.write(`❌ MCP Error: ${error.message}\n`);
+                  // MCP tool error (logged during inference if needed)
 
                   const response = {
                     jsonrpc: '2.0',
@@ -1107,15 +1078,6 @@ Available MCP functions:
       // MCP tools (playwright, vexify, etc.) are NOT directly exposed to agent
       // They are available as function calls within the execute tool environment
 
-      // Add management tools
-      tools.push({
-        name: 'alfred_status',
-        description: 'Get Alfred AI system status and history summary',
-        input_schema: {
-          type: 'object',
-          properties: {}
-        }
-      });
 
       tools.push({
         name: 'alfred_kill',
@@ -1157,8 +1119,6 @@ Available MCP functions:
       try {
         if (name === 'execute') {
           return await this.handleExecute(args);
-        } else if (name === 'alfred_status') {
-          return await this.handleStatus();
         } else if (name === 'alfred_kill') {
           return await this.handleKill(args);
         } else if (name === 'alfred') {
@@ -1259,34 +1219,6 @@ Available MCP functions:
         }]
       };
     }
-  }
-
-  async handleStatus() {
-    const historySummary = historyManager.getSummary();
-    const allTools = mcpManager.getAllTools();
-    const totalTools = Object.values(allTools).reduce((sum, tools) => sum + tools.length, 0) + 3; // +3 for alfred tools
-
-    return {
-      content: [{
-        type: 'text',
-        text: `Alfred AI System Status:
-- MCP Servers: ${Object.keys(allTools).length}
-- Total Tools Available: ${totalTools}
-- History: ${historySummary.mcpCalls} MCP calls, ${historySummary.executeInputs} executions
-- Estimated Tokens Used: ${historySummary.estimatedTokens}/60000
-
-Active MCP Servers:
-${Object.keys(allTools).map(name => `  - ${name}: ${allTools[name].length} tools`).join('\n')}
-
-Available Tools:
-  - execute: Execute code with automatic runtime detection
-  - alfred_status: Show this status
-  - alfred_kill: Kill running executions
-  - ${Object.entries(allTools).map(([server, tools]) =>
-    tools.map(tool => `  - ${server}_${tool.name}: ${tool.description}`).join('\n')
-  ).join('\n')}`
-      }]
-    };
   }
 
   async handleKill(args) {
@@ -1648,7 +1580,7 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
     const builtInTools = [];
 
     for (const tool of toolsResult.tools) {
-      if (tool.name === 'execute' || tool.name === 'alfred_status' || tool.name === 'alfred_kill' || tool.name === 'alfred') {
+      if (tool.name === 'execute' || tool.name === 'alfred_kill' || tool.name === 'alfred') {
         builtInTools.push(tool);
       } else {
         // Extract server name from tool name (format: serverName_toolName)
@@ -1862,20 +1794,19 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
           const endTime = Date.now();
           const executionTime = endTime - startTime;
 
-          // Stream tool output in real-time (always enabled)
+          // Stream tool output in real-time
           if (result.content) {
-            process.stderr.write(`📤 Output:\n`);
             for (const contentBlock of result.content) {
               if (contentBlock.type === 'text') {
                 const text = contentBlock.text;
-                // Stream output in chunks for real-time visibility
-                process.stderr.write(`  ${text}\n`);
+                // Stream output directly to console as it executes
+                process.stderr.write(text);
               }
             }
           }
 
-          // Log execution summary (always enabled)
-          process.stderr.write(`\n⏱️  Tool executed in ${executionTime}ms\n`);
+          // Log execution time only
+          process.stderr.write(`\n⏱️  Executed in ${executionTime}ms\n`);
 
           // Extract text content from result
           let resultText = '';
@@ -1900,8 +1831,7 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
         } catch (error) {
           const endTime = Date.now();
           const executionTime = endTime - startTime;
-          process.stderr.write(`\n❌ Tool error after ${executionTime}ms: ${error.message}\n`);
-          process.stderr.write(`💡 Error details: ${error.stack || 'No stack trace available'}\n`);
+          process.stderr.write(`\n❌ Error after ${executionTime}ms: ${error.message}\n`);
           messages.push({
             role: 'user',
             content: [{
