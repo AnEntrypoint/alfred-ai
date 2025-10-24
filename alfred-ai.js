@@ -245,8 +245,7 @@ class HistoryManager {
     }
     console.error('[Hooks] Initialized hooks:');
     for (const hook of this.hooks) {
-      const preview = hook.output.substring(0, 100);
-      console.error(`  - ${hook.name}: ${preview}${hook.output.length > 100 ? '...' : ''}`);
+      console.error(`  - ${hook.name}:\n${hook.output}`);
     }
   }
 
@@ -533,7 +532,7 @@ class ExecutionManager {
 
         const command = this.getExecutionCommand(runtime, tempFile);
 
-        console.error(`[execution] Spawning ${command.cmd} with args: ${JSON.stringify(command.args)}`);
+        console.error(`[execution] Spawning ${command.cmd} with args: ${JSON.stringify(command.args, null, 2)}`);
 
         const child = spawn(command.cmd, command.args, {
           stdio: ['pipe', 'pipe', 'pipe'],
@@ -549,7 +548,7 @@ class ExecutionManager {
           const output = data.toString();
           stdout += output;
           accumulatedStdout += output;
-          console.error(`[stdout hook] Received ${output.length} bytes: ${output.substring(0, 100)}${output.length > 100 ? '...' : ''}`);
+          console.error(`[stdout hook] Received ${output.length} bytes:\n${output}`);
           process.stderr.write(output);
         });
 
@@ -557,7 +556,7 @@ class ExecutionManager {
           const output = data.toString();
           stderr += output;
           accumulatedStderr += output;
-          console.error(`[stderr hook] Received ${output.length} bytes: ${output.substring(0, 100)}${output.length > 100 ? '...' : ''}`);
+          console.error(`[stderr hook] Received ${output.length} bytes:\n${output}`);
           process.stderr.write(output);
         });
 
@@ -628,7 +627,6 @@ class ExecutionManager {
           const timeDisplay = duration > 60000 ? `${minutes}min` : `${seconds}s`;
 
           console.error(`[close hook] Process exited with code: ${code}`);
-          console.error(`[close hook] Final stdout length: ${stdout.length}, stderr length: ${stderr.length}`);
           console.error(`[execution complete] Time: ${timeDisplay}`);
 
           // Cleanup temp file
@@ -723,7 +721,7 @@ class ExecutionManager {
   getExecutionCommand(runtime, filepath) {
     switch (runtime) {
       case 'nodejs':
-        return { cmd: 'node', args: [filepath] };
+        return { cmd: 'node', args: ['--no-deprecation', filepath] };
       case 'deno':
         return { cmd: 'deno', args: ['run', filepath] };
       case 'bun':
@@ -1096,7 +1094,7 @@ async function initializeHooks() {
       child.on('close', (code) => {
         clearTimeout(timer);
         if (code === 0 && output.trim()) {
-          console.error('[Hooks] Thorns hook output:', output.substring(0, 50));
+          console.error('[Hooks] Thorns hook output:\n', output);
           resolve(output.trim());
         } else {
           reject(new Error(`Thorns hook failed with code ${code}. stderr: ${stderr}`));
@@ -1135,7 +1133,7 @@ async function initializeHooks() {
       child.on('close', (code) => {
         clearTimeout(timer);
         if (code === 0 && output.trim()) {
-          console.error('[Hooks] Prompt hook output:', output.substring(0, 50));
+          console.error('[Hooks] Prompt hook output:\n', output);
           resolve(output.trim());
         } else {
           reject(new Error(`Prompt hook failed with code ${code}. stderr: ${stderr}`));
@@ -1175,7 +1173,7 @@ async function initializeHooks() {
       child.on('close', (code) => {
         clearTimeout(timer);
         if (code === 0 && output.trim()) {
-          console.error('[Hooks] WFGY hook output:', output.substring(0, 50));
+          console.error('[Hooks] WFGY hook output:\n', output);
           resolve(output.trim());
         } else {
           reject(new Error(`WFGY hook failed with code ${code}. stderr: ${stderr}`));
