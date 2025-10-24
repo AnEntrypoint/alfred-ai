@@ -892,8 +892,10 @@ class AlfredMCPServer {
         } else if (name === 'alfred') {
           return await this.handleAlfred(args);
         } else if (name.includes('_')) {
-          // Handle delegated MCP tools
-          const [serverName, toolName] = name.split('_');
+          // Handle delegated MCP tools - split only on first underscore
+          const firstUnderscoreIndex = name.indexOf('_');
+          const serverName = name.substring(0, firstUnderscoreIndex);
+          const toolName = name.substring(firstUnderscoreIndex + 1);
           const result = await mcpManager.callTool(serverName, toolName, args);
           return {
             content: [{ type: 'text', text: result }]
