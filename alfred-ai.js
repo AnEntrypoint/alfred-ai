@@ -1756,6 +1756,73 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
   return output;
 }
 
+// Setup interactive input listening - allows user to type prompts during agent execution
+// Returns a cleanup function to disable interactive mode
+function setupInteractiveInput(onPromptSubmitted) {
+  let currentPrompt = '';
+  let promptVisible = false;
+  const dataHandler = (key) => {
+    const char = key.toString();
+
+    // ESC key (0x1B) - cancel prompt
+    if (char === '\u001b') {
+      if (promptVisible) {
+        currentPrompt = '';
+        promptVisible = false;
+        process.stderr.write('\n❌ Prompt cancelled\n');
+        process.stderr.write('\n🎯 Type your prompt (ESC to cancel, ENTER to execute):\n');
+      }
+      return;
+    }
+
+    // ENTER key (0x0D or 0x0A) - submit prompt
+    if (char === '\r' || char === '\n') {
+      if (currentPrompt.trim()) {
+        const submittedPrompt = currentPrompt;
+        currentPrompt = '';
+        promptVisible = false;
+        process.stderr.write('\n');
+
+        // Call the callback with the submitted prompt
+        onPromptSubmitted(submittedPrompt);
+      }
+      return;
+    }
+
+    // Regular character input
+    if (char >= ' ' && char <= '~') {
+      currentPrompt += char;
+      if (!promptVisible) {
+        promptVisible = true;
+        process.stderr.write('\n🎯 Prompt: ');
+      }
+      process.stderr.write(char);
+    }
+
+    // Backspace (0x08 or 0x7F)
+    if (char === '\u0008' || char === '\u007F') {
+      if (currentPrompt.length > 0) {
+        currentPrompt = currentPrompt.slice(0, -1);
+        process.stderr.write('\b \b');
+      }
+    }
+  };
+
+  // Enable raw mode and set up listener
+  if (process.stdin.isTTY) {
+    process.stdin.setRawMode(true);
+  }
+  process.stdin.on('data', dataHandler);
+
+  // Return cleanup function
+  return () => {
+    process.stdin.removeListener('data', dataHandler);
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(false);
+    }
+  };
+}
+
 // CLI Agent mode - run Anthropic AI agent with the task
 async function runCLIMode(taskPrompt) {
   console.error('Alfred AI - CLI Mode');
@@ -1817,6 +1884,14 @@ async function runCLIMode(taskPrompt) {
   // Block for initialization to complete before running agent loop
   await Promise.all([hooksPromise, mcpInitPromise]);
 
+  // Set up interactive input listening
+  let userPrompt = null;
+  const cleanupInteractive = setupInteractiveInput((prompt) => {
+    userPrompt = prompt;
+    console.error(`📝 Eager prompt queued: ${prompt}`);
+    historyManager.queueEagerPrompt('cli_interactive', '💬 User submitted interactive prompt during CLI execution', prompt);
+  });
+
   // Run agent with automatic todo-aware resumption
   let currentPrompt = taskPrompt;
   let iterationCount = 0;
@@ -1866,6 +1941,9 @@ async function runCLIMode(taskPrompt) {
   if (iterationCount >= maxIterations) {
     console.error('\n⚠️  Reached maximum iterations. Stopping agent loop.\n');
   }
+
+  // Clean up interactive input
+  cleanupInteractive();
 
   mcpManager.shutdown();
   process.exit(0);
@@ -1927,93 +2005,31 @@ async function runInteractiveMode() {
 
   await Promise.all([hooksPromise, mcpInitPromise]);
 
-  // Create readline interface for interactive input
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stderr,
-    terminal: true
-  });
+  // Set up interactive input listening for prompt submission
+  const cleanupInteractive = setupInteractiveInput((prompt) => {
+    console.error(`\n📝 Executing prompt: ${prompt}\n`);
 
-  let currentPrompt = '';
-  let promptVisible = false;
+    // Queue the prompt as an eager prompt
+    historyManager.queueEagerPrompt(
+      'interactive_prompt',
+      '💬 User submitted prompt via interactive mode',
+      prompt
+    );
 
-  // Handle raw key input for ESC and ENTER
-  if (process.stdin.isTTY) {
-    process.stdin.setRawMode(true);
-  }
-
-  process.stdin.on('data', (key) => {
-    const char = key.toString();
-
-    // ESC key (0x1B)
-    if (char === '\u001b') {
-      if (promptVisible) {
-        currentPrompt = '';
-        promptVisible = false;
-        process.stderr.write('\n❌ Prompt cancelled\n');
-        process.stderr.write('\n🎯 Type your prompt (ESC to cancel, ENTER to execute):\n');
-      }
-      return;
-    }
-
-    // ENTER key (0x0D or 0x0A)
-    if (char === '\r' || char === '\n') {
-      if (currentPrompt.trim()) {
-        if (process.stdin.isTTY) {
-          process.stdin.setRawMode(false);
-        }
-
-        console.error(`\n📝 Executing prompt: ${currentPrompt}\n`);
-
-        // Queue the prompt as an eager prompt and execute
-        historyManager.queueEagerPrompt(
-          'interactive_prompt',
-          '💬 User submitted prompt via interactive mode',
-          currentPrompt
-        );
-
-        // Run the agentic loop
-        runAgenticLoop(currentPrompt, mcpServer, apiKey, true, false, historyManager)
-          .then(() => {
-            console.error('\n✅ Task completed\n');
-            mcpManager.shutdown();
-            rl.close();
-            process.exit(0);
-          })
-          .catch(error => {
-            console.error('Failed to run agent:', error);
-            mcpManager.shutdown();
-            rl.close();
-            process.exit(1);
-          });
-      }
-      return;
-    }
-
-    // Regular character input
-    if (char >= ' ' && char <= '~') {
-      currentPrompt += char;
-      if (!promptVisible) {
-        promptVisible = true;
-        process.stderr.write('\n📝 Prompt: ');
-      }
-      process.stderr.write(char);
-    }
-
-    // Backspace
-    if (char === '\u0008' || char === '\u007F') {
-      if (currentPrompt.length > 0) {
-        currentPrompt = currentPrompt.slice(0, -1);
-        process.stderr.write('\b \b');
-      }
-    }
-  });
-
-  rl.on('close', () => {
-    if (process.stdin.isTTY) {
-      process.stdin.setRawMode(false);
-    }
-    process.exit(0);
+    // Run the agentic loop
+    runAgenticLoop(prompt, mcpServer, apiKey, true, false, historyManager)
+      .then(() => {
+        console.error('\n✅ Task completed\n');
+        cleanupInteractive();
+        mcpManager.shutdown();
+        process.exit(0);
+      })
+      .catch(error => {
+        console.error('Failed to run agent:', error);
+        cleanupInteractive();
+        mcpManager.shutdown();
+        process.exit(1);
+      });
   });
 }
 
