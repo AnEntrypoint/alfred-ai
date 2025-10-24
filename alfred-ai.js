@@ -648,9 +648,21 @@ class ExecutionManager {
                 const { id, params } = parsed;
                 const { name: toolName, arguments: toolArgs } = params;
 
+                // Log MCP tool call to console for visibility
+                process.stderr.write(`🔧 MCP Tool Call: ${toolName}\n`);
+                if (Object.keys(toolArgs).length > 0) {
+                  process.stderr.write(`   Args: ${JSON.stringify(toolArgs, null, 2).split('\n').join('\n   ')}\n`);
+                }
+
                 try {
                   // Call the MCP tool
                   const result = await mcpManager.handleToolCall(toolName, toolArgs);
+
+                  // Log result to console
+                  const resultStr = JSON.stringify(result);
+                  const resultPreview = resultStr.length > 200 ? resultStr.substring(0, 200) + '...' : resultStr;
+                  process.stderr.write(`✅ MCP Result: ${resultPreview}\n`);
+
                   const response = {
                     jsonrpc: '2.0',
                     id,
@@ -659,6 +671,9 @@ class ExecutionManager {
                   // Send response back to child process
                   child.stdin.write(JSON.stringify(response) + '\n');
                 } catch (error) {
+                  // Log error to console
+                  process.stderr.write(`❌ MCP Error: ${error.message}\n`);
+
                   const response = {
                     jsonrpc: '2.0',
                     id,
@@ -1892,6 +1907,15 @@ function setupInteractiveInput(onPromptSubmitted) {
   const dataHandler = (key) => {
     const char = key.toString();
 
+    // Ctrl-C (0x03) - handle SIGINT properly in raw mode
+    if (char === '\u0003') {
+      console.error('\n\nAlfred AI shutting down (Ctrl-C)...');
+      if (mcpManager) {
+        mcpManager.shutdown();
+      }
+      process.exit(0);
+    }
+
     // ESC key (0x1B) - cancel prompt
     if (char === '\u001b') {
       if (promptVisible) {
@@ -2016,7 +2040,7 @@ async function runCLIMode(taskPrompt) {
   const cleanupInteractive = setupInteractiveInput((prompt) => {
     userPrompt = prompt;
     console.error(`📝 Eager prompt queued: ${prompt}`);
-    historyManager.queueEagerPrompt('cli_interactive', '💬 User submitted interactive prompt during CLI execution', prompt);
+    executionManager.queueEagerPrompt('cli_interactive', '💬 User submitted interactive prompt during CLI execution', prompt);
   });
 
   // Run agent with automatic todo-aware resumption
