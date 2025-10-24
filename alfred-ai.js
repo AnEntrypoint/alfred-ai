@@ -222,10 +222,16 @@ class MCPManager extends EventEmitter {
       actualToolName = toolName;
     }
 
-    // Call the tool via sendRequest with proper JSON-RPC format
+    // Get server state to use per-server ID counter
+    const serverState = this.servers.get(serverName);
+    if (!serverState) {
+      throw new Error(`MCP server ${serverName} not found`);
+    }
+
+    // Call the tool via sendRequest with proper JSON-RPC format using per-server ID
     return await this.sendRequest(serverName, {
       jsonrpc: '2.0',
-      id: this.nextId++,
+      id: serverState.nextId++,
       method: 'tools/call',
       params: {
         name: actualToolName,
