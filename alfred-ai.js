@@ -1492,7 +1492,9 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
   let continueLoop = true;
   while (continueLoop) {
     // Cleanup once per LLM iteration to enforce max item limits
-    historyManager.performCleanup();
+    if (historyManager) {
+      historyManager.performCleanup();
+    }
 
     const stream = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
