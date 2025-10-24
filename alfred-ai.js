@@ -470,25 +470,21 @@ class HistoryManager {
     if (currentMcpCount > 10) {
       const toRemove = currentMcpCount - 10;
       this.mcpCalls.splice(0, toRemove);
-      console.error(`[History Manager] Cleaned up ${toRemove} old MCP calls`);
     }
 
     if (currentInputCount > 3) {
       const toRemove = currentInputCount - 3;
       this.executeInputs.splice(0, toRemove);
-      console.error(`[History Manager] Cleaned up ${toRemove} old execute inputs`);
     }
 
     if (currentOutputCount > 3) {
       const toRemove = currentOutputCount - 3;
       this.executeOutputs.splice(0, toRemove);
-      console.error(`[History Manager] Cleaned up ${toRemove} old execute outputs`);
     }
 
     if (currentHookCount > 3) {
       const toRemove = currentHookCount - 3;
       this.hooks.splice(0, toRemove);
-      console.error(`[History Manager] Cleaned up ${toRemove} old hooks`);
     }
 
     // Recalculate tokens after cleanup
