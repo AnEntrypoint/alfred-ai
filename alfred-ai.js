@@ -10,6 +10,7 @@ import { spawn, fork } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import * as fs from 'fs';
 import { join, resolve, dirname } from 'path';
+import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { EventEmitter } from 'events';
 import { tmpdir } from 'os';
@@ -248,10 +249,7 @@ class HistoryManager {
       console.error('[Hooks] No hooks initialized');
       return;
     }
-    console.error('[Hooks] Initialized hooks:');
-    for (const hook of this.hooks) {
-      console.error(`  - ${hook.name}:\n${hook.output}`);
-    }
+    console.error(`[Hooks] Initialized ${this.hooks.length} hooks: ${this.hooks.map(h => h.name).join(', ')}`);
   }
 
   recordMcpCall(serverName, toolName, args, result) {
@@ -1104,7 +1102,7 @@ async function initializeHooks() {
       child.on('close', (code) => {
         clearTimeout(timer);
         if (code === 0 && output.trim()) {
-          console.error('[Hooks] Thorns hook output:\n', output);
+          console.error('[Hooks] ✓ Thorns hook loaded');
           resolve(output.trim());
         } else {
           reject(new Error(`Thorns hook failed with code ${code}. stderr: ${stderr}`));
@@ -1117,7 +1115,6 @@ async function initializeHooks() {
       });
     });
     historyManager.addHook('thorns', thornsOutput);
-    console.error('[Hooks] ✓ Thorns hook loaded');
   } catch (error) {
     console.error('[Hooks] ✗ Thorns hook failed:', error.message);
   }
@@ -1143,7 +1140,7 @@ async function initializeHooks() {
       child.on('close', (code) => {
         clearTimeout(timer);
         if (code === 0 && output.trim()) {
-          console.error('[Hooks] Prompt hook output:\n', output);
+          console.error('[Hooks] ✓ Prompt hook loaded');
           resolve(output.trim());
         } else {
           reject(new Error(`Prompt hook failed with code ${code}. stderr: ${stderr}`));
@@ -1156,7 +1153,6 @@ async function initializeHooks() {
       });
     });
     historyManager.addHook('prompt', promptOutput);
-    console.error('[Hooks] ✓ Prompt hook loaded');
   } catch (error) {
     console.error('[Hooks] ✗ Prompt hook failed:', error.message);
   }
@@ -1183,7 +1179,7 @@ async function initializeHooks() {
       child.on('close', (code) => {
         clearTimeout(timer);
         if (code === 0 && output.trim()) {
-          console.error('[Hooks] WFGY hook output:\n', output);
+          console.error('[Hooks] ✓ WFGY hook loaded');
           resolve(output.trim());
         } else {
           reject(new Error(`WFGY hook failed with code ${code}. stderr: ${stderr}`));
@@ -1307,7 +1303,7 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 // Shared agentic loop function
-async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, excludeAlfred = false) {
+async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, excludeAlfred = false, historyManager = null) {
   const Anthropic = (await import('@anthropic-ai/sdk')).default;
 
   // Get all available tools
@@ -1326,9 +1322,46 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
     baseURL: process.env.ANTHROPIC_BASE_URL
   });
 
+  // Add environmental context to help agent understand its situation
+  const cwd = process.cwd();
+  const parentDir = path.dirname(cwd);
+  const contextInfo = [];
+
+  // Add working directory context
+  contextInfo.push(`Working directory: ${cwd}`);
+
+  // Check for package.json to understand if it's a Node project
+  try {
+    const pkgPath = path.join(cwd, 'package.json');
+    if (fs.existsSync(pkgPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      contextInfo.push(`Current project: ${pkg.name} v${pkg.version}`);
+    }
+  } catch (e) {
+    // Not a Node project, that's fine
+  }
+
+  // Add context about relative paths mentioned in the task
+  const relativePathMatch = taskPrompt.match(/\.\.[\/\\]\w+/g);
+  if (relativePathMatch) {
+    contextInfo.push(`Parent directory: ${parentDir}`);
+  }
+
+  // Add hook content if available
+  let hooksContent = '';
+  if (historyManager && historyManager.hooks.length > 0) {
+    const hookPrompts = historyManager.hooks.map(h => h.output).join('\n\n');
+    hooksContent = `\n\n${hookPrompts}`;
+  }
+
+  // Construct enhanced prompt with context and hooks
+  const enhancedPrompt = contextInfo.length > 0
+    ? `${taskPrompt}\n\nContext:\n${contextInfo.join('\n')}${hooksContent}`
+    : `${taskPrompt}${hooksContent}`;
+
   const messages = [{
     role: 'user',
-    content: taskPrompt
+    content: enhancedPrompt
   }];
 
   if (verbose) {
@@ -1537,7 +1570,7 @@ async function runCLIMode(taskPrompt) {
   await mcpManager.initialize();
   executionManager.mcpManager = mcpManager;
 
-  await runAgenticLoop(taskPrompt, mcpServer, apiKey, true);
+  await runAgenticLoop(taskPrompt, mcpServer, apiKey, true, false, historyManager);
 
   console.error('\n✅ Task completed\n');
   mcpManager.shutdown();
