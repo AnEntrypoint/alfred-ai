@@ -816,7 +816,13 @@ class AlfredMCPServer {
       // Add execute tool
       tools.push({
         name: 'execute',
-        description: 'Execute code in the specified runtime. Preferred order: python > javascript (nodejs) > bash',
+        description: `Execute code in the specified runtime. Preferred order: python > javascript (nodejs) > bash.
+
+MCP TOOLS ACCESS: To use MCP tools (Playwright for browser automation, vexify for code search, etc.), write scripts:
+1. PLAYWRIGHT: const playwright = require('playwright'); const browser = await playwright.chromium.launch();
+2. VEXIFY: Code search via environment or Node.js integration
+3. Env vars: ALFRED_MCP_TOOLS (JSON of tools), CODEMODE_WORKING_DIRECTORY
+Examples: Write Node.js scripts using Playwright to test UIs, take screenshots, fill forms`,
         input_schema: {
           type: 'object',
           properties: {
@@ -839,16 +845,7 @@ class AlfredMCPServer {
         }
       });
 
-      // Add tools from all MCP servers
-      for (const [serverName, serverTools] of Object.entries(allTools)) {
-        for (const tool of serverTools) {
-          tools.push({
-            name: `${serverName}_${tool.name}`,
-            description: `[${serverName}] ${tool.description}`,
-            input_schema: tool.input_schema || tool.inputSchema
-          });
-        }
-      }
+      // MCP tools are accessed via execute tool, not directly exposed to agent
 
       // Add management tools
       tools.push({
@@ -906,15 +903,6 @@ class AlfredMCPServer {
           return await this.handleKill(args);
         } else if (name === 'alfred') {
           return await this.handleAlfred(args);
-        } else if (name.includes('_')) {
-          // Handle delegated MCP tools - split only on first underscore
-          const firstUnderscoreIndex = name.indexOf('_');
-          const serverName = name.substring(0, firstUnderscoreIndex);
-          const toolName = name.substring(firstUnderscoreIndex + 1);
-          const result = await mcpManager.callTool(serverName, toolName, args);
-          return {
-            content: [{ type: 'text', text: result }]
-          };
         } else {
           throw new Error(`Unknown tool: ${name}`);
         }
