@@ -222,8 +222,10 @@ class MCPManager extends EventEmitter {
       actualToolName = toolName;
     }
 
-    // Call the tool via sendRequest
+    // Call the tool via sendRequest with proper JSON-RPC format
     return await this.sendRequest(serverName, {
+      jsonrpc: '2.0',
+      id: this.nextId++,
       method: 'tools/call',
       params: {
         name: actualToolName,
