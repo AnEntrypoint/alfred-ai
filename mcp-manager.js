@@ -20,17 +20,23 @@ let config, mcpManager, historyManager, executionManager, authManager;
 
 
 class MCPManager extends EventEmitter {
-  constructor() {
+  constructor(config = null, originalCwd = null) {
     super();
     this.servers = new Map();
     this.nextId = 0;
-    this.playwrightServers = []; 
-    this.playwrightServerUsage = new Map(); 
+    this.playwrightServers = [];
+    this.playwrightServerUsage = new Map();
+    this.config = config;
+    this.originalCwd = originalCwd || process.cwd();
   }
 
   async initialize() {
     console.error('[MCP] Initializing servers...');
-    for (const [serverName, serverConfig] of Object.entries(config.config.mcpServers)) {
+    if (!this.config || !this.config.config || !this.config.config.mcpServers) {
+      console.error('[MCP] No MCP servers configured, skipping initialization');
+      return;
+    }
+    for (const [serverName, serverConfig] of Object.entries(this.config.config.mcpServers)) {
       if (serverName === 'alfred-ai') continue;
 
       try {
@@ -46,7 +52,7 @@ class MCPManager extends EventEmitter {
 
     const resolvedArgs = serverConfig.args.map(arg => {
       if (arg.endsWith('.js') && !arg.startsWith('-') && !arg.startsWith('/')) {
-        const resolved = join(config.configDir, arg);
+        const resolved = join(this.config.configDir, arg);
         return resolved;
       }
       return arg;
@@ -54,7 +60,7 @@ class MCPManager extends EventEmitter {
 
     const proc = spawn(serverConfig.command, resolvedArgs, {
       stdio: ['pipe', 'pipe', 'pipe'],
-      cwd: ORIGINAL_CWD
+      cwd: this.originalCwd
     });
 
     const serverState = {

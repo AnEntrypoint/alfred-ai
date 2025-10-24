@@ -13,7 +13,9 @@ let config, mcpManager, historyManager, executionManager, authManager;
 
 
 class ExecutionManager {
-  constructor() {
+  constructor(historyManager = null, originalCwd = null) {
+    this.historyManager = historyManager;
+    this.originalCwd = originalCwd || process.cwd();
     this.nextExecId = 0;
     this.runningExecutions = new Map();
     this.finalPromptCalled = false;
@@ -86,11 +88,12 @@ class ExecutionManager {
     try {
       const result = await this.executeCode(code, runtime, timeout, execId);
 
-      historyManager.recordExecute(
-        { code: this.compactCode(code), runtime },
-        { success: true, result: this.compactData(result) }
-      );
-
+      if (this.historyManager) {
+        this.historyManager.recordExecute(
+          { code: this.compactCode(code), runtime },
+          { success: true, result: this.compactData(result) }
+        );
+      }
 
       return {
         success: true,
@@ -98,10 +101,12 @@ class ExecutionManager {
         execId
       };
     } catch (error) {
-      historyManager.recordExecute(
-        { code: this.compactCode(code), runtime },
-        { success: false, error: error.message }
-      );
+      if (this.historyManager) {
+        this.historyManager.recordExecute(
+          { code: this.compactCode(code), runtime },
+          { success: false, error: error.message }
+        );
+      }
 
 
       return {
@@ -113,7 +118,7 @@ class ExecutionManager {
   }
 
   async executeCode(code, runtime, timeout, execId) {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       let tempFile;
       const startTime = Date.now();
       let timeoutTriggered = false;
@@ -123,17 +128,17 @@ class ExecutionManager {
       let accumulatedStderr = '';
 
       try {
-        tempFile = ExecutionHelpers.setupTempFile(code, runtime);
+        tempFile = await ExecutionHelpers.setupTempFile(code, runtime);
 
-        ExecutionHelpers.setupMcpHelper();
+        await ExecutionHelpers.setupMcpHelper();
 
         const command = ExecutionHelpers.getExecutionCommand(runtime, tempFile);
 
         console.error(`[execution] Spawning ${command.cmd} with args: ${JSON.stringify(command.args, null, 2)}`);
 
-        const childEnv = ExecutionHelpers.buildChildEnv(mcpManager, ORIGINAL_CWD);
+        const childEnv = ExecutionHelpers.buildChildEnv(mcpManager, this.originalCwd);
 
-        const child = ExecutionHelpers.spawnProcess(command, ORIGINAL_CWD, childEnv);
+        const child = ExecutionHelpers.spawnProcess(command, this.originalCwd, childEnv);
 
         console.error(`[child process hook] PID: ${child.pid}, Command: ${command.cmd}`);
 
@@ -320,7 +325,7 @@ class ExecutionManager {
   }
 
   compactData(data) {
-    return historyManager.compactData(data);
+    return this.historyManager ? this.historyManager.compactData(data) : data;
   }
 
   kill(execId) {

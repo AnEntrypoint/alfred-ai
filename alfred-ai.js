@@ -132,9 +132,9 @@ async function main() {
   }
 
   config = loadConfig();
-  mcpManager = new MCPManager();
+  mcpManager = new MCPManager(config, ORIGINAL_CWD);
   historyManager = new HistoryManager();
-  executionManager = new ExecutionManager();
+  executionManager = new ExecutionManager(historyManager, ORIGINAL_CWD);
 
   console.error('Config loaded from:', join(process.cwd(), '.codemode.json'));
 
@@ -144,7 +144,7 @@ async function main() {
 
   await initializeHooks();
 
-  const mcpServer = new AlfredMCPServer();
+  const mcpServer = new AlfredMCPServer(mcpManager, executionManager, authManager);
 
   await mcpManager.initialize();
 
@@ -662,14 +662,14 @@ async function runCLIMode(taskPrompt) {
     };
   }
 
-  mcpManager = new MCPManager();
+  mcpManager = new MCPManager(config, ORIGINAL_CWD);
   historyManager = new HistoryManager();
-  executionManager = new ExecutionManager();
+  executionManager = new ExecutionManager(historyManager, ORIGINAL_CWD);
 
   const hooksPromise = initializeHooks();
   const mcpInitPromise = mcpManager.initialize();
 
-  const mcpServer = new AlfredMCPServer();
+  const mcpServer = new AlfredMCPServer(mcpManager, executionManager, authManager);
   executionManager.mcpManager = mcpManager;
 
   await Promise.all([hooksPromise, mcpInitPromise]);
@@ -769,14 +769,14 @@ async function runInteractiveMode() {
     };
   }
 
-  mcpManager = new MCPManager();
+  mcpManager = new MCPManager(config, ORIGINAL_CWD);
   historyManager = new HistoryManager();
-  executionManager = new ExecutionManager();
+  executionManager = new ExecutionManager(historyManager, ORIGINAL_CWD);
 
   const hooksPromise = initializeHooks();
   const mcpInitPromise = mcpManager.initialize();
 
-  const mcpServer = new AlfredMCPServer();
+  const mcpServer = new AlfredMCPServer(mcpManager, executionManager, authManager);
   executionManager.mcpManager = mcpManager;
 
   await Promise.all([hooksPromise, mcpInitPromise]);
