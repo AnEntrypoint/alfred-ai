@@ -1436,17 +1436,9 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
           const lastTool = assistantContent[assistantContent.length - 1];
           if (lastTool && lastTool.type === 'tool_use') {
             lastTool.input_json = currentToolInputJson;
-            // Stream partial JSON input if verbose and it looks complete-ish
-            if (verbose && (currentToolInputJson.includes('{') || currentToolInputJson.includes('['))) {
-              try {
-                const parsed = JSON.parse(currentToolInputJson);
-                // Only write when we get a complete valid JSON
-                if (typeof parsed === 'object' && Object.keys(parsed).length > 0) {
-                  process.stderr.write('.');
-                }
-              } catch (e) {
-                // JSON not yet complete, silent accumulation
-              }
+            // Stream partial JSON input directly to console
+            if (verbose) {
+              process.stderr.write(partial);
             }
           }
         }
