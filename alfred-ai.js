@@ -1376,6 +1376,48 @@ Available Tools:
   }
 }
 
+// Helper function to run a hook process - consolidates duplicate stream handlers
+async function runHookProcess(name, command, args, options = {}) {
+  const timeout = options.timeout || 10000;
+  const cwd = options.cwd || ORIGINAL_CWD;
+  const shell = options.shell || false;
+
+  return new Promise((resolve, reject) => {
+    let output = '';
+    let stderr = '';
+
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      reject(new Error(`${name} hook timeout`));
+    }, timeout);
+
+    const child = spawn(command, args, {
+      cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell
+    });
+
+    // Single consolidated stream handlers
+    child.stdout.on('data', (data) => { output += data.toString(); });
+    child.stderr.on('data', (data) => { stderr += data.toString(); });
+
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (code === 0 && output.trim()) {
+        console.error(`[Hooks] ✓ ${name} hook loaded`);
+        resolve(output.trim());
+      } else {
+        reject(new Error(`${name} hook failed with code ${code}. stderr: ${stderr}`));
+      }
+    });
+
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+}
+
 // Initialize hooks
 async function initializeHooks() {
   console.error('[Hooks] Initializing system hooks...');
@@ -1387,37 +1429,9 @@ async function initializeHooks() {
 
   // Hook 1: Thorns hook
   try {
-    const thornsOutput = await new Promise((resolve, reject) => {
-      let output = '';
-      let stderr = '';
-      const timer = setTimeout(() => {
-        child.kill('SIGKILL');
-        reject(new Error('Thorns hook timeout'));
-      }, 10000);
-
-      const child = spawn('npx', ['-y', 'mcp-thorns@latest'], {
-        cwd: hookWorkingDir,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        shell: true
-      });
-
-      child.stdout.on('data', (data) => { output += data.toString(); });
-      child.stderr.on('data', (data) => { stderr += data.toString(); });
-
-      child.on('close', (code) => {
-        clearTimeout(timer);
-        if (code === 0 && output.trim()) {
-          console.error('[Hooks] ✓ Thorns hook loaded');
-          resolve(output.trim());
-        } else {
-          reject(new Error(`Thorns hook failed with code ${code}. stderr: ${stderr}`));
-        }
-      });
-
-      child.on('error', (err) => {
-        clearTimeout(timer);
-        reject(err);
-      });
+    const thornsOutput = await runHookProcess('Thorns', 'npx', ['-y', 'mcp-thorns@latest'], {
+      cwd: hookWorkingDir,
+      shell: true
     });
     historyManager.addHook('thorns', thornsOutput);
   } catch (error) {
@@ -1426,36 +1440,8 @@ async function initializeHooks() {
 
   // Hook 2: Prompt hook (START_MD from remote)
   try {
-    const promptOutput = await new Promise((resolve, reject) => {
-      let output = '';
-      let stderr = '';
-      const timer = setTimeout(() => {
-        child.kill('SIGKILL');
-        reject(new Error('Prompt hook timeout'));
-      }, 10000);
-
-      const child = spawn('curl', ['-s', 'https://raw.githubusercontent.com/AnEntrypoint/glootie-cc/refs/heads/master/start.md'], {
-        cwd: hookWorkingDir,
-        stdio: ['ignore', 'pipe', 'pipe']
-      });
-
-      child.stdout.on('data', (data) => { output += data.toString(); });
-      child.stderr.on('data', (data) => { stderr += data.toString(); });
-
-      child.on('close', (code) => {
-        clearTimeout(timer);
-        if (code === 0 && output.trim()) {
-          console.error('[Hooks] ✓ Prompt hook loaded');
-          resolve(output.trim());
-        } else {
-          reject(new Error(`Prompt hook failed with code ${code}. stderr: ${stderr}`));
-        }
-      });
-
-      child.on('error', (err) => {
-        clearTimeout(timer);
-        reject(err);
-      });
+    const promptOutput = await runHookProcess('Prompt', 'curl', ['-s', 'https://raw.githubusercontent.com/AnEntrypoint/glootie-cc/refs/heads/master/start.md'], {
+      cwd: hookWorkingDir
     });
     historyManager.addHook('prompt', promptOutput);
   } catch (error) {
@@ -1464,40 +1450,11 @@ async function initializeHooks() {
 
   // Hook 3: WFGY hook
   try {
-    const wfgyOutput = await new Promise((resolve, reject) => {
-      let output = '';
-      let stderr = '';
-      const timer = setTimeout(() => {
-        child.kill('SIGKILL');
-        reject(new Error('WFGY hook timeout'));
-      }, 10000);
-
-      const child = spawn('npx', ['-y', 'wfgy@latest', 'hook'], {
-        cwd: hookWorkingDir,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        shell: true
-      });
-
-      child.stdout.on('data', (data) => { output += data.toString(); });
-      child.stderr.on('data', (data) => { stderr += data.toString(); });
-
-      child.on('close', (code) => {
-        clearTimeout(timer);
-        if (code === 0 && output.trim()) {
-          console.error('[Hooks] ✓ WFGY hook loaded');
-          resolve(output.trim());
-        } else {
-          reject(new Error(`WFGY hook failed with code ${code}. stderr: ${stderr}`));
-        }
-      });
-
-      child.on('error', (err) => {
-        clearTimeout(timer);
-        reject(err);
-      });
+    const wfgyOutput = await runHookProcess('WFGY', 'npx', ['-y', 'wfgy@latest', 'hook'], {
+      cwd: hookWorkingDir,
+      shell: true
     });
     historyManager.addHook('wfgy', wfgyOutput);
-    console.error('[Hooks] ✓ WFGY hook loaded');
   } catch (error) {
     console.error('[Hooks] ✗ WFGY hook failed:', error.message);
   }
