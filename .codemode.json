@@ -13,6 +13,14 @@
         "-y",
         "@playwright/mcp"
       ]
+    },
+    "vexify": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "vexify@latest",
+        "mcp"
+      ]
     }
   }
 }
