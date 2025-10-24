@@ -1,7 +1,5 @@
 #!/usr/bin/env node
 
-#!/usr/bin/env node
-
 
 
 import { spawn, fork } from 'child_process';
@@ -14,12 +12,6 @@ import { EventEmitter } from 'events';
 import { tmpdir } from 'os';
 import { v4 as uuidv4 } from 'uuid';
 import * as readline from 'readline';
-import AuthManager from './auth-manager.js';
-
-
-let config, mcpManager, historyManager, executionManager, authManager;
-
-
 import AuthManager from './auth-manager.js';
 import MCPManager from './mcp-manager.js';
 import HistoryManager from './history-manager.js';
