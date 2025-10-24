@@ -31,25 +31,6 @@ class ASTModificationHelper {
     this.workingDirectory = workingDirectory;
   }
 
-  detectLanguageFromExtension(filePath) {
-    const ext = filePath.split('.').pop().toLowerCase();
-    const extensionMap = {
-      '.js': 'javascript',
-      '.jsx': 'javascript',
-      '.ts': 'typescript',
-      '.tsx': 'typescript',
-      '.mjs': 'javascript',
-      '.py': 'python',
-      '.go': 'go',
-      '.rs': 'rust',
-      '.c': 'c',
-      '.cpp': 'cpp',
-      '.cc': 'cpp',
-      '.cxx': 'cpp'
-    };
-    return extensionMap[ext] || 'javascript';
-  }
-
   async parseCode(code, language) {
     if (!(await isAstGrepAvailable())) {
       throw new Error('AST functionality not available');
@@ -70,10 +51,12 @@ class ASTModificationHelper {
         return { success: false, error: `File not found: ${filePath}` };
       }
 
-      const content = readFileSync(filePath, 'utf8');
-      const detectedLanguage = language || this.detectLanguageFromExtension(filePath);
+      if (!language) {
+        return { success: false, error: 'Language parameter is required for code parsing' };
+      }
 
-      const root = await this.parseCode(content, detectedLanguage);
+      const content = readFileSync(filePath, 'utf8');
+      const root = await this.parseCode(content, language);
       if (!root) {
         return { success: false, error: 'Failed to parse code' };
       }
@@ -182,10 +165,12 @@ class ASTModificationHelper {
         return { success: false, error: `File not found: ${filePath}` };
       }
 
-      const content = readFileSync(filePath, 'utf8');
-      const detectedLanguage = language || this.detectLanguageFromExtension(filePath);
+      if (!language) {
+        return { success: false, error: 'Language parameter is required for code parsing' };
+      }
 
-      const root = await this.parseCode(content, detectedLanguage);
+      const content = readFileSync(filePath, 'utf8');
+      const root = await this.parseCode(content, language);
       if (!root) {
         return { success: false, error: 'Failed to parse code' };
       }

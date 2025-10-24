@@ -157,35 +157,18 @@ export class ASTLinter {
     this.info = [];
   }
 
-  detectLanguageFromExtension(filePath) {
-    const ext = filePath.split('.').pop().toLowerCase();
-    const extensionMap = {
-      'js': 'javascript',
-      'jsx': 'javascript',
-      'ts': 'typescript',
-      'tsx': 'typescript',
-      'mjs': 'javascript',
-      'c': 'c',
-      'cpp': 'cpp',
-      'cc': 'cpp',
-      'cxx': 'cpp',
-      'py': 'python',
-      'go': 'go',
-      'rs': 'rust',
-      'java': 'java'
-    };
-    return extensionMap[ext] || 'javascript';
-  }
-
-  async lintFile(filePath, content = null) {
+  async lintFile(filePath, language = null, content = null) {
     if (!astGrepAvailable) {
       return { issues: [], available: false };
+    }
+
+    if (!language) {
+      return { success: false, error: 'Language parameter is required for linting' };
     }
 
     try {
       const fs = await import('fs');
       const code = content || fs.readFileSync(filePath, 'utf8');
-      const language = this.detectLanguageFromExtension(filePath);
 
       const issues = [];
 
