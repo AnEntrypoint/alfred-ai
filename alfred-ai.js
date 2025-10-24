@@ -615,7 +615,9 @@ class ExecutionManager {
           // Resolve immediately with timeout message so agent can continue working
           if (!promiseResolved) {
             promiseResolved = true;
-            resolve(`${timeoutMessage}\n\n${logs}\n\nTime: ${((Date.now() - startTime) / 1000).toFixed(2)}s`);
+            const elapsedMs = Math.max(0, Date.now() - startTime);
+            const elapsedSeconds = (elapsedMs / 1000).toFixed(2);
+            resolve(`${timeoutMessage}\n\n${logs}\n\nTime: ${elapsedSeconds}s`);
           }
 
           // Reset logs for background monitoring
@@ -663,9 +665,11 @@ class ExecutionManager {
 
           const endTime = Date.now();
           const duration = endTime - startTime;
-          const seconds = (duration / 1000).toFixed(2);
-          const minutes = (duration / 60000).toFixed(2);
-          const timeDisplay = duration > 60000 ? `${minutes}min` : `${seconds}s`;
+          // Ensure duration is a valid number to prevent NaN
+          const validDuration = typeof duration === 'number' && !isNaN(duration) && duration >= 0 ? duration : 0;
+          const seconds = (validDuration / 1000).toFixed(2);
+          const minutes = (validDuration / 60000).toFixed(2);
+          const timeDisplay = validDuration > 60000 ? `${minutes}min` : `${seconds}s`;
 
           console.error(`[close hook] Process exited with code: ${code}`);
           console.error(`[execution complete] Time: ${timeDisplay}`);
