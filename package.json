@@ -22,7 +22,8 @@
     ".codemode.json",
     "README.md",
     "CLAUDE.md",
-    "EXECUTION_GUIDE.md"
+    "EXECUTION_GUIDE.md",
+    "MULTI_SERVER_SETUP.md"
   ],
   "dependencies": {
     "@anthropic-ai/sdk": "^0.38.0",
