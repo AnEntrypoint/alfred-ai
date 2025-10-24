@@ -1480,23 +1480,30 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
     // Process tool uses
     for (const block of assistantContent) {
       if (block.type === 'tool_use') {
-        // Detect tool calling loops - if same tool called 3+ times in a row, stop
+        // Detect tool calling loops only for tools prone to infinite loops
         const toolName = block.name;
+        const toolsToCheckForLoops = [
+          'mcp__plugin_glootie-cc_playwright__browser_take_screenshot',
+          'mcp__plugin_glootie-cc_playwright__browser_snapshot'
+        ];
 
-        // Track recent tool calls (keep last 5)
-        recentToolCalls.push(toolName);
-        if (recentToolCalls.length > 5) {
-          recentToolCalls.shift();
-        }
+        // Only track loops for specific problematic tools
+        if (toolsToCheckForLoops.includes(toolName)) {
+          // Track recent tool calls (keep last 5)
+          recentToolCalls.push(toolName);
+          if (recentToolCalls.length > 5) {
+            recentToolCalls.shift();
+          }
 
-        // Check if we're in a loop (same tool called 3 times in a row)
-        if (recentToolCalls.length >= 3) {
-          const lastThree = recentToolCalls.slice(-3);
-          if (lastThree[0] === lastThree[1] && lastThree[1] === lastThree[2]) {
-            if (verbose) console.error(`\n⚠️  Loop detected: ${toolName} called 3 times in a row. Stopping to prevent infinite loop.`);
-            // Stop the loop and return current output
-            continueLoop = false;
-            break;
+          // Check if we're in a loop (same tool called 3 times in a row)
+          if (recentToolCalls.length >= 3) {
+            const lastThree = recentToolCalls.slice(-3);
+            if (lastThree[0] === lastThree[1] && lastThree[1] === lastThree[2]) {
+              if (verbose) console.error(`\n⚠️  Loop detected: ${toolName} called 3 times in a row. Stopping to prevent infinite loop.`);
+              // Stop the loop and return current output
+              continueLoop = false;
+              break;
+            }
           }
         }
 
