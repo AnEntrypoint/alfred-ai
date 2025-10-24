@@ -1031,6 +1031,9 @@ Available Tools:
         throw new Error('No API key available for Alfred agent');
       }
 
+      // Ensure we only trigger final prompt once per handleAlfred call
+      executionManager.resetFinalPromptFlag();
+
       // Exclude alfred tool to prevent recursion
       // Keep verbose=true for nested calls to maintain observability
       const output = await runAgenticLoop(prompt, this, apiKey, true, true);
