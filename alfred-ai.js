@@ -1391,6 +1391,7 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
     const assistantContent = [];
     let hasToolUse = false;
     let stop_reason = '';
+    let currentToolInputJson = '';
 
     for await (const event of stream) {
       if (event.type === 'content_block_start') {
@@ -1406,19 +1407,34 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
             name: event.content_block.name,
             input: {}
           });
+          currentToolInputJson = '';
         }
       } else if (event.type === 'content_block_delta') {
         if (event.delta.type === 'text_delta') {
-          // Stream text output
+          // Stream text output in real-time
           const text = event.delta.text;
           currentText += text;
           if (verbose) process.stderr.write(text);
           output += text;
         } else if (event.delta.type === 'input_json_delta') {
-          // Accumulate tool input
+          // Stream tool input assembly in real-time
+          const partial = event.delta.partial_json;
+          currentToolInputJson += partial;
           const lastTool = assistantContent[assistantContent.length - 1];
           if (lastTool && lastTool.type === 'tool_use') {
-            lastTool.input_json = (lastTool.input_json || '') + event.delta.partial_json;
+            lastTool.input_json = currentToolInputJson;
+            // Stream partial JSON input if verbose and it looks complete-ish
+            if (verbose && (currentToolInputJson.includes('{') || currentToolInputJson.includes('['))) {
+              try {
+                const parsed = JSON.parse(currentToolInputJson);
+                // Only write when we get a complete valid JSON
+                if (typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+                  process.stderr.write('.');
+                }
+              } catch (e) {
+                // JSON not yet complete, silent accumulation
+              }
+            }
           }
         }
       } else if (event.type === 'content_block_stop') {
@@ -1431,9 +1447,15 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
           // Finalize tool input
           const lastTool = assistantContent[assistantContent.length - 1];
           if (lastTool && lastTool.type === 'tool_use' && lastTool.input_json) {
-            lastTool.input = JSON.parse(lastTool.input_json);
+            try {
+              lastTool.input = JSON.parse(lastTool.input_json);
+              if (verbose) console.error(''); // newline after tool input
+            } catch (e) {
+              if (verbose) console.error(`\n  (Failed to parse tool input: ${e.message})`);
+            }
             delete lastTool.input_json;
           }
+          currentToolInputJson = '';
         }
       } else if (event.type === 'message_delta') {
         stop_reason = event.delta.stop_reason || stop_reason;
@@ -1461,6 +1483,8 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
         }
 
         try {
+          if (verbose) process.stderr.write(`\n📤 Executing tool...\n`);
+
           const result = await mcpServer.handleRequest({
             method: 'tools/call',
             params: {
@@ -1469,17 +1493,14 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
             }
           });
 
-          // Log tool output
+          // Stream tool output in real-time
           if (verbose && result.content) {
-            console.error(`📤 Output:`);
+            process.stderr.write(`📤 Output:\n`);
             for (const contentBlock of result.content) {
               if (contentBlock.type === 'text') {
                 const text = contentBlock.text;
-                if (text.length > 500) {
-                  console.error(`  ${text.substring(0, 500)}...`);
-                } else {
-                  console.error(`  ${text}`);
-                }
+                // Stream output in chunks for real-time visibility
+                process.stderr.write(`  ${text}\n`);
               }
             }
           }
@@ -1493,7 +1514,7 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
             }]
           });
         } catch (error) {
-          if (verbose) console.error(`❌ Tool error: ${error.message}`);
+          if (verbose) process.stderr.write(`\n❌ Tool error: ${error.message}\n`);
           messages.push({
             role: 'user',
             content: [{
@@ -1563,12 +1584,16 @@ async function runCLIMode(taskPrompt) {
   historyManager = new HistoryManager();
   executionManager = new ExecutionManager();
 
-  // Initialize hooks
-  await initializeHooks();
+  // Start hooks and MCP initialization in parallel (don't await yet)
+  const hooksPromise = initializeHooks();
+  const mcpInitPromise = mcpManager.initialize();
 
+  // Continue with other setup while initialization happens in background
   const mcpServer = new AlfredMCPServer();
-  await mcpManager.initialize();
   executionManager.mcpManager = mcpManager;
+
+  // Block for initialization to complete before running agent loop
+  await Promise.all([hooksPromise, mcpInitPromise]);
 
   await runAgenticLoop(taskPrompt, mcpServer, apiKey, true, false, historyManager);
 
