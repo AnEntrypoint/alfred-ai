@@ -546,9 +546,19 @@ class ExecutionManager {
 
         console.error(`[execution] Spawning ${command.cmd} with args: ${JSON.stringify(command.args, null, 2)}`);
 
+        // Pass MCP tools information to execution environment
+        const childEnv = {
+          ...process.env,
+          // Export available MCP servers as JSON
+          ALFRED_MCP_TOOLS: JSON.stringify(mcpManager ? mcpManager.getAllTools() : {}),
+          // Pass working directory for MCP context
+          CODEMODE_WORKING_DIRECTORY: process.cwd()
+        };
+
         const child = spawn(command.cmd, command.args, {
           stdio: ['pipe', 'pipe', 'pipe'],
-          cwd: process.cwd()
+          cwd: process.cwd(),
+          env: childEnv
         });
 
         console.error(`[child process hook] PID: ${child.pid}, Command: ${command.cmd}`);
