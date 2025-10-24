@@ -1061,6 +1061,15 @@ Available Tools:
       // Keep verbose=true for nested calls to maintain observability
       const output = await runAgenticLoop(prompt, this, apiKey, true, true);
 
+      // Queue sub-agent output as eager prompt to main thread
+      const subAgentId = `alfred_${Date.now()}`;
+      const summarizedOutput = output ? output.substring(0, 500) : 'No output';
+      executionManager.queueEagerPrompt(
+        subAgentId,
+        `✅ Sub-agent Alfred completed: ${summarizedOutput}${output && output.length > 500 ? '...' : ''}`,
+        output || ''
+      );
+
       return {
         content: [{
           type: 'text',
