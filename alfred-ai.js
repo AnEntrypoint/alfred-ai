@@ -1926,25 +1926,48 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
 function setupInteractiveInput(onPromptSubmitted) {
   let currentPrompt = '';
   let promptVisible = false;
+  let promptHidden = false; // Track if prompt is hidden by ESC
+  let lastEscTime = 0;
+  const escDoubleClickTime = 300; // ms between ESCs for double-tap detection
+
+  const redisplayPrompt = () => {
+    if (currentPrompt.length > 0 && !promptHidden) {
+      process.stderr.write('\n🎯 Prompt: ' + currentPrompt);
+    }
+  };
+
   const dataHandler = (key) => {
     const char = key.toString();
 
     // Ctrl-C (0x03) - handle SIGINT properly in raw mode
     if (char === '\u0003') {
-      console.error('\n\nAlfred AI shutting down (Ctrl-C)...');
+      process.stderr.write('\n\n🛑 Alfred AI shutting down (Ctrl-C)...\n');
       if (mcpManager) {
         mcpManager.shutdown();
       }
       process.exit(0);
     }
 
-    // ESC key (0x1B) - cancel prompt
+    // ESC key (0x1B) - hide/clear prompt
     if (char === '\u001b') {
-      if (promptVisible) {
+      const now = Date.now();
+      const isDoubleEsc = (now - lastEscTime) < escDoubleClickTime;
+      lastEscTime = now;
+
+      if (isDoubleEsc) {
+        // Double ESC - clear prompt completely
         currentPrompt = '';
         promptVisible = false;
-        process.stderr.write('\n❌ Prompt cancelled\n');
-        process.stderr.write('\n🎯 Type your prompt (ESC to cancel, ENTER to execute):\n');
+        promptHidden = false;
+        lastEscTime = 0; // Reset double-tap detection
+        process.stderr.write('\n🗑️  Prompt cleared\n');
+      } else {
+        // Single ESC - hide prompt (can type again to show)
+        if (promptVisible) {
+          promptVisible = false;
+          promptHidden = true;
+          process.stderr.write('\n👁️  Prompt hidden (type to show again)\n');
+        }
       }
       return;
     }
@@ -1955,6 +1978,7 @@ function setupInteractiveInput(onPromptSubmitted) {
         const submittedPrompt = currentPrompt;
         currentPrompt = '';
         promptVisible = false;
+        promptHidden = false;
         process.stderr.write('\n');
 
         // Call the callback with the submitted prompt
@@ -1966,6 +1990,7 @@ function setupInteractiveInput(onPromptSubmitted) {
     // Regular character input
     if (char >= ' ' && char <= '~') {
       currentPrompt += char;
+      promptHidden = false; // Typing reveals hidden prompt
       if (!promptVisible) {
         promptVisible = true;
         process.stderr.write('\n🎯 Prompt: ');
@@ -1988,7 +2013,7 @@ function setupInteractiveInput(onPromptSubmitted) {
   }
   process.stdin.on('data', dataHandler);
 
-  // Return cleanup function
+  // Return cleanup function and redisplay handler
   return () => {
     process.stdin.removeListener('data', dataHandler);
     if (process.stdin.isTTY) {
