@@ -1410,6 +1410,15 @@ process.on('unhandledRejection', (reason, promise) => {
   process.exit(1);
 });
 
+// Disable buffering on stderr to ensure real-time streaming output
+if (process.stderr && typeof process.stderr._handle !== 'undefined') {
+  try {
+    process.stderr._handle.setBlocking(true);
+  } catch (e) {
+    // Ignore if setBlocking not available (some Node versions)
+  }
+}
+
 // Shared agentic loop function
 async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, excludeAlfred = false, historyManager = null) {
   const Anthropic = (await import('@anthropic-ai/sdk')).default;
