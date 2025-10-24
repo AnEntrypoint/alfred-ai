@@ -51,6 +51,8 @@ class MCPManager extends EventEmitter {
     super();
     this.servers = new Map();
     this.nextId = 0;
+    this.playwrightServers = []; // Track Playwright servers for load balancing
+    this.playwrightServerUsage = new Map(); // Track current usage count per server
   }
 
   async initialize() {
@@ -166,6 +168,47 @@ class MCPManager extends EventEmitter {
         console.error(`  - ${tool.name}`);
       }
     }
+
+    // Track Playwright servers for load balancing
+    if (serverName.startsWith('playwright')) {
+      this.playwrightServers.push(serverName);
+      this.playwrightServerUsage.set(serverName, 0);
+      console.error(`[MCP Manager] Registered Playwright server: ${serverName} (total: ${this.playwrightServers.length})`);
+    }
+  }
+
+  // Select the least-used Playwright server for isolation in parallel execution
+  getPlaywrightServer() {
+    if (this.playwrightServers.length === 0) {
+      return 'playwright'; // Fallback to default
+    }
+
+    // Find the server with lowest current usage
+    let leastUsedServer = this.playwrightServers[0];
+    let minUsage = this.playwrightServerUsage.get(leastUsedServer) || 0;
+
+    for (const serverName of this.playwrightServers) {
+      const usage = this.playwrightServerUsage.get(serverName) || 0;
+      if (usage < minUsage) {
+        leastUsedServer = serverName;
+        minUsage = usage;
+      }
+    }
+
+    // Increment usage count
+    this.playwrightServerUsage.set(leastUsedServer, minUsage + 1);
+
+    console.error(`[MCP Manager] Selected Playwright server: ${leastUsedServer} (usage: ${minUsage + 1})`);
+    return leastUsedServer;
+  }
+
+  // Decrement usage when execution completes
+  releasePlaywrightServer(serverName) {
+    if (this.playwrightServers.includes(serverName)) {
+      const currentUsage = this.playwrightServerUsage.get(serverName) || 1;
+      this.playwrightServerUsage.set(serverName, Math.max(0, currentUsage - 1));
+      console.error(`[MCP Manager] Released Playwright server: ${serverName} (usage: ${Math.max(0, currentUsage - 1)})`);
+    }
   }
 
   async sendRequest(serverName, request) {
@@ -214,8 +257,15 @@ class MCPManager extends EventEmitter {
 
     if (toolName.startsWith('mcp__')) {
       const parts = toolName.split('__');
-      serverName = parts[1];
+      let baseServerName = parts[1];
       actualToolName = parts[2];
+
+      // For Playwright tools, use load-balanced server selection to avoid parallel execution conflicts
+      if (baseServerName === 'playwright') {
+        serverName = this.getPlaywrightServer();
+      } else {
+        serverName = baseServerName;
+      }
     } else {
       // Built-in tools don't have mcp__ prefix
       serverName = 'builtInTools';

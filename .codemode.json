@@ -11,7 +11,27 @@
       "command": "npx",
       "args": [
         "-y",
-        "@playwright/mcp"
+        "@playwright/mcp",
+        "--user-data-dir",
+        "/tmp/playwright-mcp-primary"
+      ]
+    },
+    "playwright-secondary": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp",
+        "--user-data-dir",
+        "/tmp/playwright-mcp-secondary"
+      ]
+    },
+    "playwright-tertiary": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp",
+        "--user-data-dir",
+        "/tmp/playwright-mcp-tertiary"
       ]
     },
     "vexify": {
