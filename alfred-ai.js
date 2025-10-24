@@ -1515,10 +1515,10 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
       if (event.type === 'content_block_start') {
         if (event.content_block.type === 'text') {
           currentThinking = true;
-          if (verbose) console.error(`\n💭 Thought:`);
+          console.error(`\n💭 Thought:`);
         } else if (event.content_block.type === 'tool_use') {
           hasToolUse = true;
-          if (verbose) console.error(`\n🔧 Tool: ${event.content_block.name}`);
+          console.error(`\n🔧 Tool: ${event.content_block.name}`);
           assistantContent.push({
             type: 'tool_use',
             id: event.content_block.id,
@@ -1532,7 +1532,7 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
           // Stream text output in real-time
           const text = event.delta.text;
           currentText += text;
-          if (verbose) process.stderr.write(text);
+          process.stderr.write(text);
           output += text;
         } else if (event.delta.type === 'input_json_delta') {
           // Stream tool input assembly in real-time
@@ -1564,7 +1564,7 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
         }
       } else if (event.type === 'content_block_stop') {
         if (currentThinking) {
-          if (verbose) console.error(''); // newline after streaming text
+          console.error(''); // newline after streaming text
           assistantContent.push({ type: 'text', text: currentText });
           currentText = '';
           currentThinking = false;
@@ -1614,7 +1614,7 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
           if (recentToolCalls.length >= 3) {
             const lastThree = recentToolCalls.slice(-3);
             if (lastThree[0] === lastThree[1] && lastThree[1] === lastThree[2]) {
-              if (verbose) console.error(`\n⚠️  Loop detected: ${toolName} called 3 times in a row. Stopping to prevent infinite loop.`);
+              console.error(`\n⚠️  Loop detected: ${toolName} called 3 times in a row. Stopping to prevent infinite loop.`);
               // Stop the loop and return current output
               continueLoop = false;
               break;
@@ -1622,8 +1622,8 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
           }
         }
 
-        // Log tool input with enhanced context
-        if (verbose && block.input && Object.keys(block.input).length > 0) {
+        // Log tool input with enhanced context (always enabled)
+        if (block.input && Object.keys(block.input).length > 0) {
           console.error(`\n📥 ${block.name} Final Input:`);
           for (const [key, value] of Object.entries(block.input)) {
             if (typeof value === 'string' && value.length > 200) {
@@ -1633,13 +1633,13 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
             }
           }
           console.error(`  📋 Input size: ${JSON.stringify(block.input).length} characters`);
-        } else if (verbose) {
+        } else {
           console.error(`\n📥 ${block.name} Input: (empty)`);
         }
 
         try {
           const startTime = Date.now();
-          if (verbose) process.stderr.write(`\n📤 Executing tool...\n`);
+          process.stderr.write(`\n📤 Executing tool...\n`);
 
           // Validate Playwright screenshot parameters
           if (block.name === 'mcp__plugin_glootie-cc_playwright__browser_take_screenshot') {
@@ -1665,8 +1665,8 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
           const endTime = Date.now();
           const executionTime = endTime - startTime;
 
-          // Stream tool output in real-time
-          if (verbose && result.content) {
+          // Stream tool output in real-time (always enabled)
+          if (result.content) {
             process.stderr.write(`📤 Output:\n`);
             for (const contentBlock of result.content) {
               if (contentBlock.type === 'text') {
@@ -1677,10 +1677,8 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
             }
           }
 
-          // Log execution summary
-          if (verbose) {
-            process.stderr.write(`\n⏱️  Tool executed in ${executionTime}ms\n`);
-          }
+          // Log execution summary (always enabled)
+          process.stderr.write(`\n⏱️  Tool executed in ${executionTime}ms\n`);
 
           // Extract text content from result
           let resultText = '';
@@ -1705,10 +1703,8 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
         } catch (error) {
           const endTime = Date.now();
           const executionTime = endTime - startTime;
-          if (verbose) {
-            process.stderr.write(`\n❌ Tool error after ${executionTime}ms: ${error.message}\n`);
-            process.stderr.write(`💡 Error details: ${error.stack || 'No stack trace available'}\n`);
-          }
+          process.stderr.write(`\n❌ Tool error after ${executionTime}ms: ${error.message}\n`);
+          process.stderr.write(`💡 Error details: ${error.stack || 'No stack trace available'}\n`);
           messages.push({
             role: 'user',
             content: [{
