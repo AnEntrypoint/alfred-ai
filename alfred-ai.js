@@ -472,11 +472,17 @@ class ExecutionManager {
     // Get todo status from historyManager if available
     if (typeof historyManager !== 'undefined' && historyManager.getTodos) {
       try {
-        return historyManager.getTodos();
+        const todos = historyManager.getTodos();
+        if (!Array.isArray(todos)) {
+          throw new Error(`Expected getTodos() to return array, got ${typeof todos}`);
+        }
+        return todos;
       } catch (e) {
-        return [];
+        console.error(`❌ Error retrieving todos from history: ${e.message}`);
+        throw e; // Re-throw so caller knows there was an error
       }
     }
+    // No todo tracking available
     return [];
   }
 
@@ -1844,9 +1850,11 @@ async function runCLIMode(taskPrompt) {
           break;
         }
       } catch (e) {
-        // If we can't check todos, assume task is complete
-        console.error('\n✅ Task completed\n');
-        break;
+        // Report the error when checking todos
+        console.error(`\n❌ Error checking todo status: ${e.message}\n`);
+        console.error(`Error details: ${e.stack}\n`);
+        console.error('⚠️  Stopping agent loop due to todo check error\n');
+        process.exit(1);
       }
     } else {
       // No todo tracking available, exit after first iteration
