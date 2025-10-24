@@ -1513,6 +1513,10 @@ async function runCLIMode(taskPrompt) {
           'playwright': {
             'command': 'npx',
             'args': ['-y', '@playwright/mcp']
+          },
+          'vexify': {
+            'command': 'npx',
+            'args': ['-y', 'vexify@latest', 'mcp']
           }
         }
       },
