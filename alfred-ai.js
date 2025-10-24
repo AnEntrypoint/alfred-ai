@@ -847,31 +847,22 @@ class AlfredMCPServer {
       const tools = [];
 
       // Build execute tool description with dynamic MCP tool list
-      let executeDescription = `Execute code in the specified runtime. Preferred order: python > javascript (nodejs) > bash.
+      let executeDescription = `Execute code in the specified runtime. Use this tool to run standalone scripts ONLY.
 
-AVAILABLE IN EXECUTE:
-- Built-in tools: read, write, edit, bash, glob, grep, ls, todo
-- MCP Tools (via scripts):`;
+CRITICAL: The code you provide will be written to a temp file and executed directly by the runtime interpreter.
+- For nodejs runtime: Provide pure JavaScript code (like you'd put in a .js file)
+- For python runtime: Provide pure Python code (like you'd put in a .py file)
+- For bash runtime: Provide bash script code (like you'd put in a .sh file)
 
-      // Add playwright tools to description
-      const playwrightTools = allTools['playwright'] || [];
-      if (playwrightTools.length > 0) {
-        executeDescription += `\n\n[PLAYWRIGHT (${playwrightTools.length} tools)]:`;
-        playwrightTools.forEach(tool => {
-          executeDescription += `\n  • ${tool.name}: ${tool.description}`;
-        });
-      }
+DO NOT:
+- Mix syntax from different languages (e.g., # comments in JavaScript)
+- Include shell commands like "node -e" or "python -c"
+- Try to call MCP tools (browser_navigate, etc) - those are separate tools, not functions
+- Use "await tool_name()" syntax - MCP tools are called separately, not from within execute
 
-      // Add vexify tools to description
-      const vexifyTools = allTools['vexify'] || [];
-      if (vexifyTools.length > 0) {
-        executeDescription += `\n\n[VEXIFY (${vexifyTools.length} tools)]:`;
-        vexifyTools.forEach(tool => {
-          executeDescription += `\n  • ${tool.name}: ${tool.description}`;
-        });
-      }
+Preference order: python > nodejs > bash
 
-      executeDescription += `\n\nEnvironment variables available:
+Environment variables available:
 - ALFRED_MCP_TOOLS: JSON string of all available MCP tools
 - CODEMODE_WORKING_DIRECTORY: Current working directory`;
 
