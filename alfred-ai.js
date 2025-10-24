@@ -1381,24 +1381,31 @@ async function main() {
       }
     }
   });
-
-  process.on('SIGINT', () => {
-    console.error('\nAlfred AI shutting down...');
-    mcpManager.shutdown();
-    process.exit(0);
-  });
-
-  process.on('SIGTERM', () => {
-    console.error('\nAlfred AI shutting down...');
-    mcpManager.shutdown();
-    process.exit(0);
-  });
 }
+
+// Signal handlers - handle Ctrl-C gracefully
+process.on('SIGINT', () => {
+  console.error('\n\nAlfred AI shutting down...');
+  if (mcpManager) {
+    mcpManager.shutdown();
+  }
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  console.error('\nAlfred AI shutting down...');
+  if (mcpManager) {
+    mcpManager.shutdown();
+  }
+  process.exit(0);
+});
 
 // Error handling
 process.on('uncaughtException', (error) => {
   console.error('Uncaught exception:', error);
-  mcpManager.shutdown();
+  if (mcpManager) {
+    mcpManager.shutdown();
+  }
   process.exit(1);
 });
 
