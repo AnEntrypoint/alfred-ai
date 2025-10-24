@@ -1539,26 +1539,24 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
           const lastTool = assistantContent[assistantContent.length - 1];
           if (lastTool && lastTool.type === 'tool_use') {
             lastTool.input_json = currentToolInputJson;
-            // Stream partial JSON input directly to console with enhanced visibility
-            if (verbose) {
-              // Add visual indicators for better streaming experience
-              if (currentToolInputJson.length === partial.length) {
-                // First character of the tool input
-                process.stderr.write(`\n🔧 ${lastTool.name} Input (streaming):\n  `);
-              } else if (partial.trim() === '' && currentToolInputJson.trim().endsWith(',')) {
-                // Empty whitespace after comma for better formatting
-                process.stderr.write(partial);
-              } else if (partial === '{' || partial === '[') {
-                // Opening brackets
-                process.stderr.write(partial);
-              } else if (partial === '}' || partial === ']') {
-                // Closing brackets
-                process.stderr.write(partial);
-                process.stderr.write('\n'); // Newline after complete JSON
-              } else {
-                // Regular content
-                process.stderr.write(partial);
-              }
+            // Stream partial JSON input directly to console with enhanced visibility (always enabled)
+            // Add visual indicators for better streaming experience
+            if (currentToolInputJson.length === partial.length) {
+              // First character of the tool input
+              process.stderr.write(`\n🔧 ${lastTool.name} Input (streaming):\n  `);
+            } else if (partial.trim() === '' && currentToolInputJson.trim().endsWith(',')) {
+              // Empty whitespace after comma for better formatting
+              process.stderr.write(partial);
+            } else if (partial === '{' || partial === '[') {
+              // Opening brackets
+              process.stderr.write(partial);
+            } else if (partial === '}' || partial === ']') {
+              // Closing brackets
+              process.stderr.write(partial);
+              process.stderr.write('\n'); // Newline after complete JSON
+            } else {
+              // Regular content
+              process.stderr.write(partial);
             }
           }
         }
@@ -1574,9 +1572,9 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
           if (lastTool && lastTool.type === 'tool_use' && lastTool.input_json) {
             try {
               lastTool.input = JSON.parse(lastTool.input_json);
-              if (verbose) console.error(''); // newline after tool input
+              console.error(''); // newline after tool input
             } catch (e) {
-              if (verbose) console.error(`\n  (Failed to parse tool input: ${e.message})`);
+              console.error(`\n  (Failed to parse tool input: ${e.message})`);
             }
             delete lastTool.input_json;
           }
