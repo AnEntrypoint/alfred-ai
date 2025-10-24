@@ -884,7 +884,7 @@ AVAILABLE IN EXECUTE:
           properties: {
             code: {
               type: 'string',
-              description: 'Code to execute'
+              description: 'Source code to execute (NOT shell commands). For nodejs: pure JavaScript code. For python: pure Python code. For bash: bash script code. Do NOT include shell invocations like "node -e" or "python -c" - just provide the raw source code for the runtime.'
             },
             runtime: {
               type: 'string',
