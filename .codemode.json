@@ -41,6 +41,14 @@
         "vexify@latest",
         "mcp"
       ]
+    },
+    "playread": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "playread@latest",
+        "mcp"
+      ]
     }
   }
 }

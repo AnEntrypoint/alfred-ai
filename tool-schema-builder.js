@@ -20,18 +20,41 @@ CODE EXECUTION RULES:
 - For python runtime: Pure Python code (like you'd put in a .py file)
 - For bash runtime: Bash script code (like you'd put in a .sh file)
 
+ALTERNATIVE: Auto-Execute Code Blocks
+Instead of using the execute tool, you can write code blocks in your text output that will auto-execute:
+
+\`\`\`execute:nodejs
+const fs = require('fs');
+console.log('This code auto-executes - no JSON escaping!');
+\`\`\`
+
+Benefits: No JSON escaping, no truncation, quotes/backticks/newlines work perfectly.
+
+⚠️  CRITICAL: NEVER use regular code blocks (\`\`\`javascript, \`\`\`python) - they won't execute.
+ONLY use \`\`\`execute:runtime when you want code to run.
+Do NOT show code examples - if code shouldn't execute, describe it in text instead.
+
 DO NOT:
 - Use CLI tools like 'playwright', 'npx playwright', 'python -m pytest' etc.
 - Mix syntax from different languages (e.g., # comments in JavaScript)
 - Include shell commands like "node -e" or "python -c" - just provide raw source code
 - Try to access Playwright/other tools except through the JSON-RPC helper
 
-Preference order: python > nodejs > bash
+RUNTIME SELECTION:
+- Choose the runtime that makes the TASK easiest (not based on codebase language)
+- Python: Best for data processing, regex, file operations, simple scripts
+- Node.js: Best for async operations, MCP tools (browser, search), JSON processing
+- Bash: Best for system operations, command chaining, environment setup
+- Use whatever language makes the next step clearest and most concise
 
 MCP TOOLS AVAILABLE via JSON-RPC stdio (REQUIRED FOR TESTING):
-To use MCP tools from Node.js code, require the helper module from /tmp:
+For CommonJS (require):
   const mcp = require('/tmp/mcp-runtime-helpers.cjs');
 
+For ES Modules (import):
+  import mcp from '/tmp/mcp-runtime-helpers.mjs';
+
+Examples:
   const result = await mcp.browser_navigate({url: 'https://example.com'});
   const screenshot = await mcp.browser_take_screenshot({});
   const snapshot = await mcp.browser_snapshot({});

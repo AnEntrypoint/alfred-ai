@@ -13,13 +13,19 @@ let config, mcpManager, historyManager, executionManager, authManager;
 
 
 class ExecutionManager {
-  constructor(historyManager = null, originalCwd = null) {
+  constructor(historyManager = null, originalCwd = null, mcpManager = null) {
     this.historyManager = historyManager;
+    this.mcpManager = mcpManager;
     this.originalCwd = originalCwd || process.cwd();
     this.nextExecId = 0;
     this.runningExecutions = new Map();
     this.finalPromptCalled = false;
     this.eagerPrompts = [];
+    this.eagerPromptHandler = null;
+  }
+
+  setEagerPromptHandler(handler) {
+    this.eagerPromptHandler = handler;
   }
 
   queueEagerPrompt(execId, message, logs) {
@@ -31,6 +37,11 @@ class ExecutionManager {
     };
     this.eagerPrompts.push(prompt);
     console.error(`[Eager Prompt Queued] ${execId}: ${message}`);
+
+    if (this.eagerPromptHandler) {
+      const formattedPrompt = `${message}\n\n\`\`\`\n${logs}\n\`\`\``;
+      setImmediate(() => this.eagerPromptHandler(formattedPrompt));
+    }
   }
 
   getQueuedPrompts() {
@@ -136,7 +147,7 @@ class ExecutionManager {
 
         console.error(`[execution] Spawning ${command.cmd} with args: ${JSON.stringify(command.args, null, 2)}`);
 
-        const childEnv = ExecutionHelpers.buildChildEnv(mcpManager, this.originalCwd);
+        const childEnv = ExecutionHelpers.buildChildEnv(this.mcpManager, this.originalCwd);
 
         const child = ExecutionHelpers.spawnProcess(command, this.originalCwd, childEnv);
 
@@ -164,7 +175,7 @@ class ExecutionManager {
 
 
                 try {
-                  const result = await mcpManager.handleToolCall(toolName, toolArgs);
+                  const result = await this.mcpManager.handleToolCall(toolName, toolArgs);
 
 
                   const response = {

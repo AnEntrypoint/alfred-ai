@@ -74,25 +74,17 @@ function callMCPTool(toolName, args = {}) {
 
 const mcp = {};
 
+for (const [serverName, tools] of Object.entries(MCP_TOOLS)) {
+  if (!Array.isArray(tools)) continue;
 
-if (MCP_TOOLS.playwright) {
-  mcp.playwright = {};
-  MCP_TOOLS.playwright.forEach(tool => {
-    const toolName = `mcp__playwright__${tool.name}`;
-    mcp.playwright[tool.name] = (args) => callMCPTool(toolName, args);
-    mcp[tool.name] = mcp.playwright[tool.name];
+  mcp[serverName] = {};
+
+  tools.forEach(tool => {
+    const parts = tool.name.split('__');
+    const shortName = parts[parts.length - 1];
+    mcp[serverName][shortName] = (args) => callMCPTool(tool.name, args);
+    mcp[shortName] = mcp[serverName][shortName];
   });
 }
-
-
-if (MCP_TOOLS.vexify) {
-  mcp.vexify = {};
-  MCP_TOOLS.vexify.forEach(tool => {
-    const toolName = `mcp__vexify__${tool.name}`;
-    mcp.vexify[tool.name] = (args) => callMCPTool(toolName, args);
-    mcp[tool.name] = mcp.vexify[tool.name];
-  });
-}
-
 
 module.exports = mcp;

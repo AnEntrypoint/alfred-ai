@@ -134,7 +134,7 @@ async function main() {
   config = loadConfig();
   mcpManager = new MCPManager(config, ORIGINAL_CWD);
   historyManager = new HistoryManager();
-  executionManager = new ExecutionManager(historyManager, ORIGINAL_CWD);
+  executionManager = new ExecutionManager(historyManager, ORIGINAL_CWD, mcpManager);
 
   console.error('Config loaded from:', join(process.cwd(), '.codemode.json'));
 
@@ -147,8 +147,6 @@ async function main() {
   const mcpServer = new AlfredMCPServer(mcpManager, executionManager, authManager);
 
   await mcpManager.initialize();
-
-  executionManager.mcpManager = mcpManager;
 
   console.error('Alfred AI ready - Accepting MCP requests via stdio');
 
@@ -412,7 +410,59 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
       content: assistantContent
     });
 
+    const executeCodeBlocks = (text) => {
+      const codeBlockRegex = /```execute:(\w+)\n([\s\S]*?)```/g;
+      const blocks = [];
+      let match;
+
+      while ((match = codeBlockRegex.exec(text)) !== null) {
+        blocks.push({
+          runtime: match[1],
+          code: match[2].trim()
+        });
+      }
+
+      return blocks;
+    };
+
     for (const block of assistantContent) {
+      if (block.type === 'text') {
+        const execBlocks = executeCodeBlocks(block.text);
+        for (const execBlock of execBlocks) {
+          console.error(`\n🔧 Auto-executing code block (${execBlock.runtime})...`);
+          console.error(`📋 Code size: ${execBlock.code.length} characters\n`);
+
+          try {
+            const result = await mcpServer.handleRequest({
+              method: 'tools/call',
+              params: {
+                name: 'execute',
+                arguments: {
+                  code: execBlock.code,
+                  runtime: execBlock.runtime
+                }
+              }
+            });
+
+            if (result.content && result.content[0] && result.content[0].text) {
+              console.error('📤 Execution result:');
+              console.error(result.content[0].text);
+
+              messages.push({
+                role: 'user',
+                content: [{
+                  type: 'tool_result',
+                  tool_use_id: 'auto_exec_' + Date.now(),
+                  content: result.content[0].text
+                }]
+              });
+            }
+          } catch (error) {
+            console.error(`❌ Auto-execution failed: ${error.message}`);
+          }
+        }
+      }
+
       if (block.type === 'tool_use') {
         const toolName = block.name;
         const toolsToCheckForLoops = [
@@ -655,6 +705,10 @@ async function runCLIMode(taskPrompt) {
           'vexify': {
             'command': 'npx',
             'args': ['-y', 'vexify@latest', 'mcp']
+          },
+          'playread': {
+            'command': 'npx',
+            'args': ['-y', 'playread@latest', 'mcp']
           }
         }
       },
@@ -664,13 +718,12 @@ async function runCLIMode(taskPrompt) {
 
   mcpManager = new MCPManager(config, ORIGINAL_CWD);
   historyManager = new HistoryManager();
-  executionManager = new ExecutionManager(historyManager, ORIGINAL_CWD);
+  executionManager = new ExecutionManager(historyManager, ORIGINAL_CWD, mcpManager);
 
   const hooksPromise = initializeHooks();
   const mcpInitPromise = mcpManager.initialize();
 
   const mcpServer = new AlfredMCPServer(mcpManager, executionManager, authManager);
-  executionManager.mcpManager = mcpManager;
 
   await Promise.all([hooksPromise, mcpInitPromise]);
 
@@ -725,8 +778,31 @@ async function runCLIMode(taskPrompt) {
 
   cleanupInteractive();
 
-  mcpManager.shutdown();
-  process.exit(0);
+  console.error('\n💬 Ready for next prompt. Press Ctrl+C to exit.\n');
+
+  return new Promise((resolve) => {
+    const handlePrompt = async (prompt) => {
+      console.error(`\n📝 Executing prompt: ${prompt}\n`);
+
+      try {
+        await runAgenticLoop(prompt, mcpServer, apiKey, true, false, historyManager);
+        console.error('\n✅ Task completed\n');
+        console.error('💬 Ready for next prompt. Press Ctrl+C to exit.\n');
+      } catch (error) {
+        console.error('Failed to run agent:', error);
+      }
+    };
+
+    executionManager.setEagerPromptHandler(handlePrompt);
+
+    const cleanup = setupInteractiveInput(handlePrompt);
+
+    process.on('SIGINT', () => {
+      cleanup();
+      mcpManager.shutdown();
+      process.exit(0);
+    });
+  });
 }
 
 
@@ -762,6 +838,10 @@ async function runInteractiveMode() {
           'vexify': {
             'command': 'npx',
             'args': ['-y', 'vexify@latest', 'mcp']
+          },
+          'playread': {
+            'command': 'npx',
+            'args': ['-y', 'playread@latest', 'mcp']
           }
         }
       },
@@ -771,38 +851,43 @@ async function runInteractiveMode() {
 
   mcpManager = new MCPManager(config, ORIGINAL_CWD);
   historyManager = new HistoryManager();
-  executionManager = new ExecutionManager(historyManager, ORIGINAL_CWD);
+  executionManager = new ExecutionManager(historyManager, ORIGINAL_CWD, mcpManager);
 
   const hooksPromise = initializeHooks();
   const mcpInitPromise = mcpManager.initialize();
 
   const mcpServer = new AlfredMCPServer(mcpManager, executionManager, authManager);
-  executionManager.mcpManager = mcpManager;
 
   await Promise.all([hooksPromise, mcpInitPromise]);
 
-  const cleanupInteractive = setupInteractiveInput((prompt) => {
-    console.error(`\n📝 Executing prompt: ${prompt}\n`);
+  return new Promise((resolve) => {
+    const handlePrompt = async (prompt) => {
+      console.error(`\n📝 Executing prompt: ${prompt}\n`);
 
-    historyManager.queueEagerPrompt(
-      'interactive_prompt',
-      '💬 User submitted prompt via interactive mode',
-      prompt
-    );
+      historyManager.queueEagerPrompt(
+        'interactive_prompt',
+        '💬 User submitted prompt via interactive mode',
+        prompt
+      );
 
-    runAgenticLoop(prompt, mcpServer, apiKey, true, false, historyManager)
-      .then(() => {
+      try {
+        await runAgenticLoop(prompt, mcpServer, apiKey, true, false, historyManager);
         console.error('\n✅ Task completed\n');
-        cleanupInteractive();
-        mcpManager.shutdown();
-        process.exit(0);
-      })
-      .catch(error => {
+        console.error('💬 Ready for next prompt. Press Ctrl+C to exit.\n');
+      } catch (error) {
         console.error('Failed to run agent:', error);
-        cleanupInteractive();
-        mcpManager.shutdown();
-        process.exit(1);
-      });
+      }
+    };
+
+    executionManager.setEagerPromptHandler(handlePrompt);
+
+    const cleanup = setupInteractiveInput(handlePrompt);
+
+    process.on('SIGINT', () => {
+      cleanup();
+      mcpManager.shutdown();
+      process.exit(0);
+    });
   });
 }
 
