@@ -9,10 +9,16 @@ import { v4 as uuidv4 } from 'uuid';
 import { copyFileSync, unlinkSync } from 'fs';
 
 export class ExecutionHelpers {
-  static getFileExtension(runtime) {
+  static getFileExtension(runtime, code = '') {
     switch (runtime) {
       case 'nodejs':
-        return '.js';
+        const hasImport = /^import\s+/m.test(code) || /\nimport\s+/.test(code);
+        const hasRequire = /require\s*\(/.test(code);
+        const hasTopLevelAwait = /^await\s+/m.test(code) || /\nawait\s+/.test(code);
+        const hasDynamicImport = /\bimport\s*\(/.test(code);
+        const needsESM = hasImport || hasTopLevelAwait || (hasDynamicImport && hasTopLevelAwait);
+        const isESM = needsESM && !hasRequire;
+        return isESM ? '.mjs' : '.cjs';
       case 'deno':
         return '.ts';
       case 'bun':
@@ -73,7 +79,7 @@ export class ExecutionHelpers {
   }
 
   static async setupTempFile(code, runtime) {
-    const extension = this.getFileExtension(runtime);
+    const extension = this.getFileExtension(runtime, code);
     const tempFile = join(tmpdir(), `alfred-ai-${uuidv4()}${extension}`);
     fs.writeFileSync(tempFile, code);
     return tempFile;
@@ -82,12 +88,21 @@ export class ExecutionHelpers {
   static async setupMcpHelper() {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = dirname(__filename);
-    const helperSource = join(__dirname, 'mcp-runtime-helpers.cjs');
-    const helperDest = join(tmpdir(), 'mcp-runtime-helpers.cjs');
+
+    const cjsSource = join(__dirname, 'mcp-runtime-helpers.cjs');
+    const cjsDest = join(tmpdir(), 'mcp-runtime-helpers.cjs');
     try {
-      copyFileSync(helperSource, helperDest);
+      copyFileSync(cjsSource, cjsDest);
     } catch (e) {
-      console.error('[execution] Warning: Could not copy MCP helper module:', e.message);
+      console.error('[execution] Warning: Could not copy MCP CJS helper:', e.message);
+    }
+
+    const mjsSource = join(__dirname, 'mcp-runtime-helpers.mjs');
+    const mjsDest = join(tmpdir(), 'mcp-runtime-helpers.mjs');
+    try {
+      copyFileSync(mjsSource, mjsDest);
+    } catch (e) {
+      console.error('[execution] Warning: Could not copy MCP MJS helper:', e.message);
     }
   }
 

@@ -49,6 +49,7 @@ export ANTHROPIC_API_KEY=your-api-key-here
 ✅ AST-based code search
 ✅ NPX compatible
 ✅ Automatic authentication detection
+✅ Integrated MCP servers: Playwright, Vexify, Playread
 
 ## Usage
 
@@ -297,6 +298,116 @@ Final todo list:
 - 4 files over limit (core functionality, architectural necessity)
 - Total codebase: 4,341 lines across 14 files
 
+## Recent Fixes (Session: ES Module Support & Playwright Integration)
+
+### Critical Execution Fixes
+- ✅ Fixed ES module vs CommonJS conflict in code execution
+- ✅ Added automatic module type detection (.cjs for require, .mjs for import)
+- ✅ Created mcp-runtime-helpers.mjs for ES module support
+- ✅ Updated execution-helpers.js to auto-detect module syntax
+- ✅ Both CommonJS and ES modules now supported in execute tool
+- ✅ Updated tool instructions to show both import methods
+- ✅ Fixed MCP tool name parsing (split approach vs regex)
+- ✅ Playwright MCP tools verified working in code execution
+- ✅ Updated package.json to include mcp-runtime-helpers.mjs
+- ✅ Removed timeout-test.js from package files list (doesn't exist)
+
+### Module Detection Logic
+The execution system now automatically detects whether code uses `import` or `require`:
+- If code contains `import` statements → creates `.mjs` file (ES module)
+- If code contains `require()` → creates `.cjs` file (CommonJS)
+- Helper modules available in both formats in /tmp
+
+### MCP Tool Name Parsing
+Tool names follow the format `mcp__plugin_glootie-cc_playwright__browser_navigate`
+- Regex approach failed due to hyphens in plugin name
+- Solution: Split on `__` and take last part
+- Works for any MCP server naming convention
+
+### Verified Working
+**Test**: Agent searched web for peanut cake recipe and saved to peanut.md
+- ✅ Playwright browser automation working
+- ✅ Web navigation and content extraction working
+- ✅ File writing from executed code working
+- ✅ Complete end-to-end integration verified
+
+### Runtime Selection Philosophy
+- Agent should choose runtime based on TASK, not codebase language
+- Python: Best for data processing, regex, file operations
+- Node.js: Best for async, MCP tools (browser/search), JSON
+- Bash: Best for system operations, command chaining
+- Use whatever language makes the next step clearest
+
+### Interactive Prompting Fix (v5.20.22)
+**Issue**: Double typing when entering prompts after task completion
+**Root Cause**: Two readline interfaces active simultaneously
+  1. Line 675: Eager prompting during initial task execution
+  2. Line 738: Post-completion interactive prompting
+**Solution**: Call `cleanupInteractive()` at line 723 before setting up new interface
+**Result**: Single, clean readline interface for post-task prompting
+
+### Module Detection Enhancement (v5.20.23)
+**Issue**: Code with top-level await saved as .cjs causing "await is only valid in async functions" error
+**Root Cause**: Detection only checked for `import` statements, not top-level `await` or dynamic imports
+**Solution**: Enhanced detection in execution-helpers.js:15-20
+  - Detects static `import` statements
+  - Detects top-level `await` (requires ES modules)
+  - Detects dynamic `import()` combined with top-level await
+  - If `require()` present, defaults to .cjs for safety
+**Result**: All module patterns correctly detected, 7/7 test cases passing
+
+### Auto-Execute Code Blocks (v5.20.26)
+**Problem**: JSON tool calls require escaping code, causing corruption/truncation
+**Solution**: LLM writes code directly in text output using special syntax
+
+**Syntax:**
+\`\`\`execute:nodejs
+const data = { "key": "value" };
+console.log('No escaping needed!');
+\`\`\`
+
+**Benefits:**
+- No JSON wrapper = no corruption
+- Quotes, backticks, newlines preserved exactly
+- Large code works perfectly
+- Natural code generation
+
+**Critical Rules:**
+- NEVER use regular code blocks (\`\`\`javascript)
+- ONLY use \`\`\`execute:runtime for code
+- No code examples - describe in text instead
+
+### Eager Prompt Mechanism (v5.20.25)
+**Purpose**: Allow background processes to immediately notify the agent when they complete
+**Implementation**:
+- ExecutionManager queues eager prompts when background processes complete
+- Eager prompts immediately invoke the active prompt handler via `setImmediate()`
+- Agent receives formatted prompt with completion message and logs
+- Enables agent to react to long-running background executions
+
+**Flow**:
+1. Background process times out (>timeout) or completes
+2. `queueEagerPrompt()` called with execId, message, logs
+3. Handler immediately invoked with formatted prompt
+4. Agent processes the completion and can take action
+
+### Default MCP Servers
+Alfred AI includes these MCP servers by default:
+
+1. **Playwright** (`@playwright/mcp`)
+   - Browser automation and testing
+   - 21 functions: navigate, click, type, screenshot, etc.
+
+2. **Vexify** (`vexify@latest`)
+   - Semantic code search
+   - 1 function: search_code
+
+3. **Playread** (`playread@latest`) - Added in v5.20.24
+   - Web fetching and search
+   - 2 functions: fetch, google-search
+
+All tools are available in code execution environment via `mcp.function_name()`.
+
 ## Status
 ✅ Production ready
 ✅ Dual-mode operation (CLI + MCP)
@@ -308,3 +419,4 @@ Final todo list:
 ✅ Code execution best practices documented
 ✅ All syntax errors fixed
 ✅ Codebase clean and validated
+✅ ES module and CommonJS both supported in execution

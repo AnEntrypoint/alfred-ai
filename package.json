@@ -1,6 +1,6 @@
 {
   "name": "alfred-ai",
-  "version": "5.20.16",
+  "version": "5.20.27",
   "description": "Alfred AI - A simplified, SDK-free version of codemode using direct MCP client/server communication with automatic OAuth authentication",
   "main": "alfred-ai.js",
   "type": "module",
@@ -8,8 +8,7 @@
     "alfred-ai": "alfred-ai.js"
   },
   "scripts": {
-    "start": "node alfred-ai.js",
-    "test": "node timeout-test.js"
+    "start": "node alfred-ai.js"
   },
   "files": [
     "alfred-ai.js",
@@ -22,11 +21,11 @@
     "execution-helpers.js",
     "mcp-manager.js",
     "mcp-runtime-helpers.cjs",
+    "mcp-runtime-helpers.mjs",
     "tool-schema-builder.js",
     "alfred-mcp-server.js",
     "history-manager.js",
     "linting-rules.js",
-    "timeout-test.js",
     ".codemode.json",
     "README.md",
     "CLAUDE.md"
