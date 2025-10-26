@@ -114,10 +114,12 @@ export class ExecutionHelpers {
   }
 
   static buildChildEnv(mcpManager, originalCwd) {
+    const nodePath = [originalCwd, process.env.NODE_PATH].filter(Boolean).join(':');
     return {
       ...process.env,
       ALFRED_MCP_TOOLS: JSON.stringify(mcpManager ? mcpManager.getAllTools() : {}),
-      CODEMODE_WORKING_DIRECTORY: originalCwd
+      CODEMODE_WORKING_DIRECTORY: originalCwd,
+      NODE_PATH: nodePath
     };
   }
 

@@ -3,6 +3,7 @@
 
 
 import ToolSchemaBuilder from './tool-schema-builder.js';
+import { runAgenticLoop } from './alfred-ai.js';
 
 
 let config, mcpManager, historyManager, executionManager, authManager;

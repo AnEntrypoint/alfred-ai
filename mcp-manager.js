@@ -45,6 +45,21 @@ class MCPManager extends EventEmitter {
         console.error(`[${serverName}] Error: ${error.message}`);
       }
     }
+
+    // Register virtual builtInTools server after all real servers initialized
+    // This is a placeholder that other code will handle directly
+    if (!this.servers.has('builtInTools')) {
+      this.servers.set('builtInTools', {
+        process: null,
+        tools: [],
+        nextId: 0,
+        buffer: '',
+        pendingCalls: new Map(),
+        isVirtual: true
+      });
+      console.error('[MCP] Registered virtual builtInTools server');
+    }
+
     console.error('[MCP] Ready\n');
   }
 

@@ -778,31 +778,39 @@ async function runCLIMode(taskPrompt) {
 
   cleanupInteractive();
 
-  console.error('\n💬 Ready for next prompt. Press Ctrl+C to exit.\n');
+  // For CLI mode with explicit task, exit after completion
+  // For interactive mode, user must explicitly request it
+  if (process.stdin.isTTY) {
+    console.error('\n💬 Ready for next prompt. Press Ctrl+C to exit.\n');
 
-  return new Promise((resolve) => {
-    const handlePrompt = async (prompt) => {
-      console.error(`\n📝 Executing prompt: ${prompt}\n`);
+    return new Promise((resolve) => {
+      const handlePrompt = async (prompt) => {
+        console.error(`\n📝 Executing prompt: ${prompt}\n`);
 
-      try {
-        await runAgenticLoop(prompt, mcpServer, apiKey, true, false, historyManager);
-        console.error('\n✅ Task completed\n');
-        console.error('💬 Ready for next prompt. Press Ctrl+C to exit.\n');
-      } catch (error) {
-        console.error('Failed to run agent:', error);
-      }
-    };
+        try {
+          await runAgenticLoop(prompt, mcpServer, apiKey, true, false, historyManager);
+          console.error('\n✅ Task completed\n');
+          console.error('💬 Ready for next prompt. Press Ctrl+C to exit.\n');
+        } catch (error) {
+          console.error('Failed to run agent:', error);
+        }
+      };
 
-    executionManager.setEagerPromptHandler(handlePrompt);
+      executionManager.setEagerPromptHandler(handlePrompt);
 
-    const cleanup = setupInteractiveInput(handlePrompt);
+      const cleanup = setupInteractiveInput(handlePrompt);
 
-    process.on('SIGINT', () => {
-      cleanup();
-      mcpManager.shutdown();
-      process.exit(0);
+      process.on('SIGINT', () => {
+        cleanup();
+        mcpManager.shutdown();
+        process.exit(0);
+      });
     });
-  });
+  } else {
+    // Non-interactive (piped input or task argument) - exit cleanly after task
+    mcpManager.shutdown();
+    process.exit(0);
+  }
 }
 
 
@@ -924,4 +932,4 @@ if (isMainModule) {
   }
 }
 
-export { AlfredMCPServer, MCPManager, HistoryManager, ExecutionManager };
+export { AlfredMCPServer, MCPManager, HistoryManager, ExecutionManager, runAgenticLoop };
