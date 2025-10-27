@@ -76,10 +76,15 @@ export class ExecutionHelpers {
     return 'Unknown';
   }
 
+  static sanitizeCode(code) {
+    return code.replace(/\\\//g, '/');
+  }
+
   static async setupTempFile(code, runtime) {
     const extension = this.getFileExtension(runtime, code);
+    const cleanCode = this.sanitizeCode(code);
     const tempFile = join(tmpdir(), `alfred-ai-${uuidv4()}${extension}`);
-    fs.writeFileSync(tempFile, code);
+    fs.writeFileSync(tempFile, cleanCode);
     return tempFile;
   }
 
