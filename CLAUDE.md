@@ -410,6 +410,18 @@ All tools are available in code execution environment via `mcp.function_name()`.
 
 ## Recent Fixes (Session: Code Execution Robustness)
 
+### Regex Pattern Sanitization (v5.20.39)
+**Issue**: Code with regex patterns containing escaped forward slashes like `/foo\\/bar/` caused `SyntaxError: Invalid regular expression flags`
+
+**Root Cause**: Agent generates code with over-escaped forward slashes in regex literals: `\/` which is invalid syntax
+
+**Solution**: Added `sanitizeCode()` function that removes over-escaped forward slashes before execution
+- Pattern `\/` becomes `/` in all contexts
+- Safe because `\/` is invalid in valid JavaScript anyway
+- Runs automatically on all generated code before execution
+
+**Result**: Malformed regex patterns are automatically fixed, code executes successfully
+
 ### Module Type Detection Enhancement (v5.20.37-38)
 **Issue**: Code with `await` statements saved as `.cjs` (CommonJS) causing `SyntaxError: await is only valid in async functions`
 
