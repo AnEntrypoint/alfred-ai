@@ -408,6 +408,39 @@ Alfred AI includes these MCP servers by default:
 
 All tools are available in code execution environment via `mcp.function_name()`.
 
+## Recent Fixes (Session: Code Execution Robustness)
+
+### Module Type Detection Enhancement (v5.20.37-38)
+**Issue**: Code with `await` statements saved as `.cjs` (CommonJS) causing `SyntaxError: await is only valid in async functions`
+
+**Root Cause**: Regex pattern `/^await\s+/m` only matched lines starting with `await`, missing cases like `const result = await fn()` where await appears mid-line
+
+**Solution**:
+1. Changed pattern to `/\bawait\s+/` to match `await` as word boundary anywhere in code
+2. Simplified logic: use `.mjs` if code has `import`, `await`, or dynamic `import()` - period
+3. Removed complex require() condition that was causing conflicts
+
+**Result**: All code with await statements now correctly uses ES modules, preventing SyntaxError
+
+### Path Utility Helpers (v5.20.36)
+**Added**: `path` helper object to `mcp-runtime-helpers.cjs` and `.mjs`
+
+**Purpose**: Provides utilities for code executing in `/tmp` to resolve paths relative to original working directory
+
+**Utilities Available**:
+- `path.resolve(...paths)` - Resolve path relative to working directory
+- `path.cwd()` - Get working directory
+- `path.join(...segments)` - Join path segments
+- `path.ext(filepath)` - Get file extension
+- `path.dir(filepath)` - Get directory name
+- `path.basename(filepath)` - Get base filename
+
+**Usage in Executed Code**:
+```javascript
+const mcp = require('/tmp/mcp-runtime-helpers.cjs');
+fs.writeFileSync(mcp.path.resolve('lib/file.js'), content);
+```
+
 ## Status
 ✅ Production ready
 ✅ Dual-mode operation (CLI + MCP)
