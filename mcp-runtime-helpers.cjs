@@ -8,8 +8,12 @@ const MCP_TOOLS_JSON = process.env.ALFRED_MCP_TOOLS || '{}';
 let MCP_TOOLS = {};
 try {
   MCP_TOOLS = JSON.parse(MCP_TOOLS_JSON);
+  if (Object.keys(MCP_TOOLS).length === 0) {
+    console.error('[MCP Helper] ⚠️  No MCP tools available - ALFRED_MCP_TOOLS is empty or not set');
+  }
 } catch (e) {
   console.error('[MCP Helper] Failed to parse ALFRED_MCP_TOOLS:', e.message);
+  MCP_TOOLS = {};
 }
 
 

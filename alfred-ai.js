@@ -24,23 +24,57 @@ const ORIGINAL_CWD = process.cwd();
 
 function loadConfig() {
   const configPath = join(process.cwd(), '.codemode.json');
+  let configData;
+
   if (!existsSync(configPath)) {
-    throw new Error(`BRUTAL ERROR: Config file not found at ${configPath} - Create .codemode.json in current working directory`);
-  }
-  try {
-    const configData = JSON.parse(readFileSync(configPath, 'utf8'));
-    if (!configData.mcpServers) {
-      throw new Error('BRUTAL ERROR: config.mcpServers is undefined');
+    console.error('[Config] No .codemode.json found, using default MCP server configuration');
+    configData = {
+      mcpServers: {
+        'playwright': {
+          command: 'npx',
+          args: ['@playwright/mcp']
+        },
+        'vexify': {
+          command: 'npx',
+          args: ['vexify@latest']
+        },
+        'playread': {
+          command: 'npx',
+          args: ['playread@latest']
+        }
+      }
+    };
+  } else {
+    try {
+      configData = JSON.parse(readFileSync(configPath, 'utf8'));
+    } catch (error) {
+      throw new Error(`Config parse error: ${error.message}`);
     }
-    return { config: configData, configDir: dirname(configPath) };
-  } catch (error) {
-    throw new Error(`BRUTAL ERROR: Failed to load config: ${error.message}`);
   }
+
+  if (!configData.mcpServers) {
+    configData.mcpServers = {
+      'playwright': {
+        command: 'npx',
+        args: ['@playwright/mcp']
+      },
+      'vexify': {
+        command: 'npx',
+        args: ['vexify@latest']
+      },
+      'playread': {
+        command: 'npx',
+        args: ['playread@latest']
+      }
+    };
+  }
+
+  return { config: configData, configDir: dirname(configPath) };
 }
 
 
 async function runHookProcess(name, command, args, options = {}) {
-  const timeout = options.timeout || 10000;
+  const timeout = options.timeout || (command === 'npx' ? 60000 : 15000);
   const cwd = options.cwd || ORIGINAL_CWD;
   const shell = options.shell || false;
 
@@ -50,7 +84,7 @@ async function runHookProcess(name, command, args, options = {}) {
 
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
-      reject(new Error(`${name} hook timeout`));
+      reject(new Error(`${name} hook timeout after ${timeout}ms`));
     }, timeout);
 
     const child = spawn(command, args, {
@@ -131,15 +165,16 @@ async function main() {
     process.exit(1);
   }
 
-  config = loadConfig();
+  const configResult = loadConfig();
+  config = configResult.config;
   mcpManager = new MCPManager(config, ORIGINAL_CWD);
   historyManager = new HistoryManager();
   executionManager = new ExecutionManager(historyManager, ORIGINAL_CWD, mcpManager);
 
   console.error('Config loaded from:', join(process.cwd(), '.codemode.json'));
 
-  if (authInfo.creditsReset) {
-    console.error(`Credits: ${authInfo.creditsReset}`);
+  if (authManager.apiKey) {
+    console.error('[Auth Manager] ✅ API key found in environment');
   }
 
   await initializeHooks();
