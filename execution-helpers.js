@@ -77,9 +77,61 @@ export class ExecutionHelpers {
   }
 
   static sanitizeCode(code) {
-    // No sanitization - code should be valid JavaScript as provided
-    // Attempting to fix escaping causes more issues than it solves
-    return code;
+    return this.escapeBackticksInTemplateLiterals(code);
+  }
+
+  static escapeBackticksInTemplateLiterals(code) {
+    const lines = code.split('\n');
+    const result = [];
+    let inTemplateLiteral = false;
+
+    for (const line of lines) {
+      result.push(this.fixBackticksInLine(line, inTemplateLiteral));
+      inTemplateLiteral = this.updateTemplateLiteralState(line, inTemplateLiteral);
+    }
+
+    return result.join('\n');
+  }
+
+  static updateTemplateLiteralState(line, currentState) {
+    let state = currentState;
+    for (let i = 0; i < line.length; i++) {
+      if (line[i] === '`' && (i === 0 || line[i - 1] !== '\\')) {
+        state = !state;
+      }
+    }
+    return state;
+  }
+
+  static fixBackticksInLine(line, isInsideTemplateLiteral) {
+    const unescapedBacktickPositions = [];
+
+    for (let i = 0; i < line.length; i++) {
+      if (line[i] === '`' && (i === 0 || line[i - 1] !== '\\')) {
+        unescapedBacktickPositions.push(i);
+      }
+    }
+
+    if (unescapedBacktickPositions.length === 0 || !isInsideTemplateLiteral) {
+      return line;
+    }
+
+    if (unescapedBacktickPositions.length % 2 === 1) {
+      const positionsToEscape = unescapedBacktickPositions.slice(0, -1);
+      let modified = line;
+      for (let i = positionsToEscape.length - 1; i >= 0; i--) {
+        const pos = positionsToEscape[i];
+        modified = modified.substring(0, pos) + '\\`' + modified.substring(pos + 1);
+      }
+      return modified;
+    } else {
+      let modified = line;
+      for (let i = unescapedBacktickPositions.length - 1; i >= 0; i--) {
+        const pos = unescapedBacktickPositions[i];
+        modified = modified.substring(0, pos) + '\\`' + modified.substring(pos + 1);
+      }
+      return modified;
+    }
   }
 
   static async setupTempFile(code, runtime) {
