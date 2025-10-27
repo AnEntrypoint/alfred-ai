@@ -13,12 +13,10 @@ export class ExecutionHelpers {
     switch (runtime) {
       case 'nodejs':
         const hasImport = /^import\s+/m.test(code) || /\nimport\s+/.test(code);
-        const hasRequire = /require\s*\(/.test(code);
         const hasAwait = /\bawait\s+/i.test(code);
         const hasDynamicImport = /\bimport\s*\(/.test(code);
-        const needsESM = hasImport || hasAwait || hasDynamicImport;
-        const isESM = needsESM && !hasRequire;
-        return isESM ? '.mjs' : '.cjs';
+        const useESM = hasImport || hasAwait || hasDynamicImport;
+        return useESM ? '.mjs' : '.cjs';
       case 'deno':
         return '.ts';
       case 'bun':
