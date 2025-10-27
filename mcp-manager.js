@@ -33,21 +33,26 @@ class MCPManager extends EventEmitter {
   async initialize() {
     console.error('[MCP] Initializing servers...');
     if (!this.config || !this.config.config || !this.config.config.mcpServers) {
-      console.error('[MCP] No MCP servers configured, skipping initialization');
-      return;
+      console.error('[FATAL] No MCP servers configured - set mcpServers in config');
+      process.exit(1);
     }
+
+    const serverNames = Object.keys(this.config.config.mcpServers).filter(s => s !== 'alfred-ai');
+    console.error(`[MCP] Starting ${serverNames.length} configured servers: ${serverNames.join(', ')}`);
+
     for (const [serverName, serverConfig] of Object.entries(this.config.config.mcpServers)) {
       if (serverName === 'alfred-ai') continue;
 
       try {
         await this.startServer(serverName, serverConfig);
+        console.error(`[MCP] ✓ ${serverName} server started`);
       } catch (error) {
-        console.error(`[${serverName}] Error: ${error.message}`);
+        console.error(`[FATAL] ${serverName} server failed to start: ${error.message}`);
+        process.exit(1);
       }
     }
 
     // Register virtual builtInTools server after all real servers initialized
-    // This is a placeholder that other code will handle directly
     if (!this.servers.has('builtInTools')) {
       this.servers.set('builtInTools', {
         process: null,
@@ -57,10 +62,10 @@ class MCPManager extends EventEmitter {
         pendingCalls: new Map(),
         isVirtual: true
       });
-      console.error('[MCP] Registered virtual builtInTools server');
+      console.error('[MCP] ✓ Registered virtual builtInTools server');
     }
 
-    console.error('[MCP] Ready\n');
+    console.error('[MCP] Ready - All servers initialized\n');
   }
 
   async startServer(serverName, serverConfig) {
