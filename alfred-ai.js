@@ -33,14 +33,6 @@ function loadConfig() {
         'playwright': {
           command: 'npx',
           args: ['@playwright/mcp']
-        },
-        'vexify': {
-          command: 'npx',
-          args: ['vexify@latest']
-        },
-        'playread': {
-          command: 'npx',
-          args: ['playread@latest']
         }
       }
     };
@@ -57,14 +49,6 @@ function loadConfig() {
       'playwright': {
         command: 'npx',
         args: ['@playwright/mcp']
-      },
-      'vexify': {
-        command: 'npx',
-        args: ['vexify@latest']
-      },
-      'playread': {
-        command: 'npx',
-        args: ['playread@latest']
       }
     };
   }
