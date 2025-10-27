@@ -77,7 +77,9 @@ export class ExecutionHelpers {
   }
 
   static sanitizeCode(code) {
-    return code.replace(/\\\//g, '/');
+    // No sanitization - code should be valid JavaScript as provided
+    // Attempting to fix escaping causes more issues than it solves
+    return code;
   }
 
   static async setupTempFile(code, runtime) {
