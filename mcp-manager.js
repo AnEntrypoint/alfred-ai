@@ -200,7 +200,7 @@ class MCPManager extends EventEmitter {
       const timeout = setTimeout(() => {
         serverState.pendingCalls.delete(request.id);
         reject(new Error(`MCP request timeout for ${serverName}`));
-      }, 30000);
+      }, 60000);
 
       serverState.pendingCalls.set(request.id, {
         resolve: (result) => { clearTimeout(timeout); resolve(result); },
