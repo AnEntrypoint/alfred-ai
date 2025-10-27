@@ -93,23 +93,204 @@ export class ExecutionHelpers {
   static async setupMcpHelper() {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = dirname(__filename);
+    const cjsDest = join(tmpdir(), 'mcp-runtime-helpers.cjs');
+    const mjsDest = join(tmpdir(), 'mcp-runtime-helpers.mjs');
 
     const cjsSource = join(__dirname, 'mcp-runtime-helpers.cjs');
-    const cjsDest = join(tmpdir(), 'mcp-runtime-helpers.cjs');
     try {
       copyFileSync(cjsSource, cjsDest);
       console.error('[execution] ✓ MCP CJS helper copied to', cjsDest);
     } catch (e) {
-      throw new Error(`Failed to copy MCP CJS helper: ${e.message}`);
+      console.error('[execution] ⚠ CJS copy failed, creating inline fallback');
+      const cjsContent = `#!/usr/bin/env node
+
+const readline = require('readline');
+
+const MCP_TOOLS_JSON = process.env.ALFRED_MCP_TOOLS || '{}';
+let MCP_TOOLS = {};
+try {
+  MCP_TOOLS = JSON.parse(MCP_TOOLS_JSON);
+} catch (e) {
+  console.error('[FATAL] MCP Helper: Failed to parse ALFRED_MCP_TOOLS:', e.message);
+  process.exit(1);
+}
+
+if (Object.keys(MCP_TOOLS).length === 0) {
+  console.error('[FATAL] MCP Helper: No MCP tools available');
+  process.exit(1);
+}
+
+let requestId = 1;
+const pendingRequests = new Map();
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout,
+  terminal: false
+});
+
+rl.on('line', (line) => {
+  try {
+    const response = JSON.parse(line);
+    if (response.id && pendingRequests.has(response.id)) {
+      const { resolve, reject } = pendingRequests.get(response.id);
+      pendingRequests.delete(response.id);
+      if (response.error) {
+        reject(new Error(response.error.message || 'MCP tool call failed'));
+      } else {
+        resolve(response.result);
+      }
+    }
+  } catch (e) {
+    console.error('[MCP Helper] Failed to parse response:', e.message);
+  }
+});
+
+function callMCPTool(toolName, args = {}) {
+  return new Promise((resolve, reject) => {
+    const id = requestId++;
+    const request = {
+      jsonrpc: '2.0',
+      id,
+      method: 'tools/call',
+      params: { name: toolName, arguments: args }
+    };
+    pendingRequests.set(id, { resolve, reject });
+    process.stdout.write(JSON.stringify(request) + '\\n');
+    setTimeout(() => {
+      if (pendingRequests.has(id)) {
+        pendingRequests.delete(id);
+        reject(new Error(\`MCP tool \${toolName} timed out\`));
+      }
+    }, 30000);
+  });
+}
+
+const path = require('path');
+const workingDir = process.env.CODEMODE_WORKING_DIRECTORY || process.cwd();
+const pathHelper = {
+  resolve: (...paths) => {
+    const relativePath = path.join(...paths);
+    return path.isAbsolute(relativePath) ? relativePath : path.join(workingDir, relativePath);
+  },
+  cwd: () => workingDir,
+  join: (...segments) => path.join(...segments),
+  ext: (filepath) => path.extname(filepath),
+  dir: (filepath) => path.dirname(filepath),
+  basename: (filepath) => path.basename(filepath)
+};
+
+const mcp = {};
+for (const [serverName, tools] of Object.entries(MCP_TOOLS)) {
+  if (!Array.isArray(tools)) continue;
+  mcp[serverName] = {};
+  tools.forEach(tool => {
+    const parts = tool.name.split('__');
+    const shortName = parts[parts.length - 1];
+    mcp[serverName][shortName] = (args) => callMCPTool(tool.name, args);
+    mcp[shortName] = mcp[serverName][shortName];
+  });
+}
+
+module.exports = Object.assign(mcp, { path: pathHelper, __workingDir: workingDir });
+`;
+      fs.writeFileSync(cjsDest, cjsContent);
+      console.error('[execution] ✓ MCP CJS helper created inline to', cjsDest);
     }
 
     const mjsSource = join(__dirname, 'mcp-runtime-helpers.mjs');
-    const mjsDest = join(tmpdir(), 'mcp-runtime-helpers.mjs');
     try {
       copyFileSync(mjsSource, mjsDest);
       console.error('[execution] ✓ MCP MJS helper copied to', mjsDest);
     } catch (e) {
-      throw new Error(`Failed to copy MCP MJS helper: ${e.message}`);
+      console.error('[execution] ⚠ MJS copy failed, creating inline fallback');
+      const mjsContent = `#!/usr/bin/env node
+
+import readline from 'readline';
+
+const MCP_TOOLS_JSON = process.env.ALFRED_MCP_TOOLS || '{}';
+let MCP_TOOLS = {};
+try {
+  MCP_TOOLS = JSON.parse(MCP_TOOLS_JSON);
+} catch (e) {
+  console.error('[MCP Helper] Failed to parse ALFRED_MCP_TOOLS:', e.message);
+}
+
+let requestId = 1;
+const pendingRequests = new Map();
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout,
+  terminal: false
+});
+
+rl.on('line', (line) => {
+  try {
+    const response = JSON.parse(line);
+    if (response.id && pendingRequests.has(response.id)) {
+      const { resolve, reject } = pendingRequests.get(response.id);
+      pendingRequests.delete(response.id);
+      if (response.error) {
+        reject(new Error(response.error.message || 'MCP tool call failed'));
+      } else {
+        resolve(response.result);
+      }
+    }
+  } catch (e) {
+    console.error('[MCP Helper] Failed to parse response:', e.message);
+  }
+});
+
+function callMCPTool(toolName, args = {}) {
+  return new Promise((resolve, reject) => {
+    const id = requestId++;
+    const request = {
+      jsonrpc: '2.0',
+      id,
+      method: 'tools/call',
+      params: { name: toolName, arguments: args }
+    };
+    pendingRequests.set(id, { resolve, reject });
+    process.stdout.write(JSON.stringify(request) + '\\n');
+    setTimeout(() => {
+      if (pendingRequests.has(id)) {
+        pendingRequests.delete(id);
+        reject(new Error(\`MCP tool \${toolName} timed out\`));
+      }
+    }, 30000);
+  });
+}
+
+import path from 'path';
+const workingDir = process.env.CODEMODE_WORKING_DIRECTORY || process.cwd();
+const pathHelper = {
+  resolve: (...paths) => {
+    const relativePath = path.join(...paths);
+    return path.isAbsolute(relativePath) ? relativePath : path.join(workingDir, relativePath);
+  },
+  cwd: () => workingDir,
+  join: (...segments) => path.join(...segments),
+  ext: (filepath) => path.extname(filepath),
+  dir: (filepath) => path.dirname(filepath),
+  basename: (filepath) => path.basename(filepath)
+};
+
+const mcp = {};
+for (const [serverName, tools] of Object.entries(MCP_TOOLS)) {
+  if (!Array.isArray(tools)) continue;
+  mcp[serverName] = {};
+  tools.forEach(tool => {
+    const parts = tool.name.split('__');
+    const shortName = parts[parts.length - 1];
+    mcp[serverName][shortName] = (args) => callMCPTool(tool.name, args);
+    mcp[shortName] = mcp[serverName][shortName];
+  });
+}
+
+const exportObj = Object.assign({}, mcp, { path: pathHelper, __workingDir: workingDir });
+export default exportObj;
+`;
+      fs.writeFileSync(mjsDest, mjsContent);
+      console.error('[execution] ✓ MCP MJS helper created inline to', mjsDest);
     }
   }
 
