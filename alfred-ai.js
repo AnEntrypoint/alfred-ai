@@ -818,7 +818,15 @@ async function runCLIMode(taskPrompt) {
     console.error('\n💬 Ready for next prompt. Press Ctrl+C to exit.\n');
 
     return new Promise((resolve) => {
+      let isExecuting = false;
+
       const handlePrompt = async (prompt) => {
+        if (isExecuting) {
+          console.error('⚠️ Already executing prompt, ignoring duplicate');
+          return;
+        }
+
+        isExecuting = true;
         console.error(`\n📝 Executing prompt: ${prompt}\n`);
 
         try {
@@ -827,6 +835,8 @@ async function runCLIMode(taskPrompt) {
           console.error('💬 Ready for next prompt. Press Ctrl+C to exit.\n');
         } catch (error) {
           console.error('Failed to run agent:', error);
+        } finally {
+          isExecuting = false;
         }
       };
 
@@ -903,7 +913,15 @@ async function runInteractiveMode() {
   await Promise.all([hooksPromise, mcpInitPromise]);
 
   return new Promise((resolve) => {
+    let isExecuting = false;
+
     const handlePrompt = async (prompt) => {
+      if (isExecuting) {
+        console.error('⚠️ Already executing prompt, ignoring duplicate');
+        return;
+      }
+
+      isExecuting = true;
       console.error(`\n📝 Executing prompt: ${prompt}\n`);
 
       historyManager.queueEagerPrompt(
@@ -918,6 +936,8 @@ async function runInteractiveMode() {
         console.error('💬 Ready for next prompt. Press Ctrl+C to exit.\n');
       } catch (error) {
         console.error('Failed to run agent:', error);
+      } finally {
+        isExecuting = false;
       }
     };
 
