@@ -74,17 +74,19 @@ function loadConfig() {
 
 
 async function runHookProcess(name, command, args, options = {}) {
-  const timeout = options.timeout || (command === 'npx' ? 60000 : 15000);
+  const timeout = options.timeout || 30000;
   const cwd = options.cwd || ORIGINAL_CWD;
   const shell = options.shell || false;
 
   return new Promise((resolve, reject) => {
     let output = '';
     let stderr = '';
+    let timedOut = false;
 
     const timer = setTimeout(() => {
+      timedOut = true;
       child.kill('SIGKILL');
-      reject(new Error(`${name} hook timeout after ${timeout}ms`));
+      reject(new Error(`${name} hook timeout after ${timeout}ms - increase timeout or check infrastructure`));
     }, timeout);
 
     const child = spawn(command, args, {
@@ -121,35 +123,48 @@ async function initializeHooks() {
   console.error(`[Hooks] Running hooks in working directory: ${hookWorkingDir}`);
 
   try {
+    console.error('[Hooks] Loading Thorns hook...');
     const thornsOutput = await runHookProcess('Thorns', 'npx', ['-y', 'mcp-thorns@latest'], {
       cwd: hookWorkingDir,
-      shell: true
+      shell: true,
+      timeout: 90000
     });
+    console.error('[Hooks] ✓ Thorns hook loaded');
     historyManager.addHook('thorns', thornsOutput);
   } catch (error) {
-    console.error('[Hooks] ✗ Thorns hook failed:', error.message);
+    console.error(`[FATAL] Thorns hook failed: ${error.message}`);
+    process.exit(1);
   }
 
   try {
+    console.error('[Hooks] Loading Prompt hook...');
     const promptOutput = await runHookProcess('Prompt', 'curl', ['-s', 'https://raw.githubusercontent.com/AnEntrypoint/glootie-cc/refs/heads/master/start.md'], {
-      cwd: hookWorkingDir
+      cwd: hookWorkingDir,
+      timeout: 30000
     });
+    console.error('[Hooks] ✓ Prompt hook loaded');
     historyManager.addHook('prompt', promptOutput);
   } catch (error) {
-    console.error('[Hooks] ✗ Prompt hook failed:', error.message);
+    console.error(`[FATAL] Prompt hook failed: ${error.message}`);
+    process.exit(1);
   }
 
   try {
+    console.error('[Hooks] Loading WFGY hook...');
     const wfgyOutput = await runHookProcess('WFGY', 'npx', ['-y', 'wfgy@latest', 'hook'], {
       cwd: hookWorkingDir,
-      shell: true
+      shell: true,
+      timeout: 90000
     });
+    console.error('[Hooks] ✓ WFGY hook loaded');
     historyManager.addHook('wfgy', wfgyOutput);
   } catch (error) {
-    console.error('[Hooks] ✗ WFGY hook failed:', error.message);
+    console.error(`[FATAL] WFGY hook failed: ${error.message}`);
+    process.exit(1);
   }
 
   historyManager.logHooks();
+  console.error('[Hooks] ✓ All hooks loaded successfully');
 }
 
 

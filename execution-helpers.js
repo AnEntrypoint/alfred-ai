@@ -93,16 +93,18 @@ export class ExecutionHelpers {
     const cjsDest = join(tmpdir(), 'mcp-runtime-helpers.cjs');
     try {
       copyFileSync(cjsSource, cjsDest);
+      console.error('[execution] ✓ MCP CJS helper copied to', cjsDest);
     } catch (e) {
-      console.error('[execution] Warning: Could not copy MCP CJS helper:', e.message);
+      throw new Error(`Failed to copy MCP CJS helper: ${e.message}`);
     }
 
     const mjsSource = join(__dirname, 'mcp-runtime-helpers.mjs');
     const mjsDest = join(tmpdir(), 'mcp-runtime-helpers.mjs');
     try {
       copyFileSync(mjsSource, mjsDest);
+      console.error('[execution] ✓ MCP MJS helper copied to', mjsDest);
     } catch (e) {
-      console.error('[execution] Warning: Could not copy MCP MJS helper:', e.message);
+      throw new Error(`Failed to copy MCP MJS helper: ${e.message}`);
     }
   }
 
