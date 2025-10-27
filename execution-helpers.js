@@ -77,7 +77,67 @@ export class ExecutionHelpers {
   }
 
   static sanitizeCode(code) {
-    return this.escapeBackticksInTemplateLiterals(code);
+    let sanitized = this.escapeBackticksInTemplateLiterals(code);
+    sanitized = this.fixBracketQuoteMismatches(sanitized);
+    sanitized = this.autoInjectCommonImports(sanitized);
+    return sanitized;
+  }
+
+  static fixBracketQuoteMismatches(code) {
+    return code
+      .replace(/from\s+['"`]\s*([^'"`]+)\s*['"`)]\s*]/g, "from '$1'")
+      .replace(/require\s*\(\s*['"`]\s*([^'"`]+)\s*['"`]\s*\]/g, "require('$1')")
+      .replace(/from\s+['"`]([^'"`]+)['"`]\]/g, "from '$1'")
+      .replace(/require\s*\(\s*['"`]([^'"`]+)['"`)]\]/g, "require('$1')");
+  }
+
+  static autoInjectCommonImports(code) {
+    const commonModules = {
+      fs: "const fs = require('fs');",
+      path: "const path = require('path');",
+      child_process: "const { spawn, exec } = require('child_process');",
+      util: "const util = require('util');",
+      stream: "const stream = require('stream');",
+      events: "const events = require('events');",
+      Buffer: "const { Buffer } = require('buffer');",
+      console: null
+    };
+
+    const lines = code.split('\n');
+    const imports = [];
+    let injectedImports = false;
+
+    for (const module in commonModules) {
+      if (commonModules[module] === null) continue;
+
+      const isImported = code.match(new RegExp(
+        `(import\\s+|require\\s*\\(|const\\s+.*\\s*=\\s*require\\s*\\(.*['"]${module}['"]|from\\s+['"]${module})`,
+        'i'
+      ));
+
+      const isUsed = code.match(new RegExp(`\\b${module}\\b`));
+
+      if (isUsed && !isImported) {
+        imports.push(commonModules[module]);
+        injectedImports = true;
+      }
+    }
+
+    if (injectedImports) {
+      let insertIndex = 0;
+
+      for (let i = 0; i < lines.length; i++) {
+        if (!lines[i].match(/^\s*(['"]use strict['"]|import|const|let|var|function|class|\/\/|\/\*)/)) {
+          insertIndex = i;
+          break;
+        }
+        insertIndex = i + 1;
+      }
+
+      lines.splice(insertIndex, 0, ...imports);
+    }
+
+    return lines.join('\n');
   }
 
   static escapeBackticksInTemplateLiterals(code) {
