@@ -439,6 +439,35 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
       }
     }
 
+    // Calculate response size for this inference
+    let totalResponseSize = 0;
+    for (const block of assistantContent) {
+      if (block.type === 'text') {
+        totalResponseSize += block.text.length;
+      } else if (block.type === 'tool_use') {
+        totalResponseSize += JSON.stringify(block.input || {}).length;
+      }
+    }
+
+    // Calculate input size for this inference (last user message)
+    let inputSize = 0;
+    if (messages.length > 0 && messages[messages.length - 1].role === 'user') {
+      const lastUserMessage = messages[messages.length - 1];
+      if (Array.isArray(lastUserMessage.content)) {
+        for (const content of lastUserMessage.content) {
+          if (content.type === 'text') {
+            inputSize += content.text.length;
+          } else if (content.type === 'tool_result') {
+            inputSize += JSON.stringify(content.content || {}).length;
+          }
+        }
+      } else if (typeof lastUserMessage.content === 'string') {
+        inputSize = lastUserMessage.content.length;
+      }
+    }
+
+    console.error(`\n📊 Inference: Input (${inputSize}) Output (${totalResponseSize})\n`);
+
     messages.push({
       role: 'assistant',
       content: assistantContent
@@ -822,7 +851,6 @@ async function runCLIMode(taskPrompt) {
 
       const handlePrompt = async (prompt) => {
         if (isExecuting) {
-          console.error('⚠️ Already executing prompt, ignoring duplicate');
           return;
         }
 
@@ -917,7 +945,6 @@ async function runInteractiveMode() {
 
     const handlePrompt = async (prompt) => {
       if (isExecuting) {
-        console.error('⚠️ Already executing prompt, ignoring duplicate');
         return;
       }
 

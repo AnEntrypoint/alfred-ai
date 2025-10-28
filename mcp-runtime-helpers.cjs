@@ -1,55 +1,44 @@
 #!/usr/bin/env node
 
-
-const readline = require('readline');
-
-
 const MCP_TOOLS_JSON = process.env.ALFRED_MCP_TOOLS || '{}';
 let MCP_TOOLS = {};
 try {
   MCP_TOOLS = JSON.parse(MCP_TOOLS_JSON);
 } catch (e) {
-  console.error('[FATAL] MCP Helper: Failed to parse ALFRED_MCP_TOOLS:', e.message);
-  process.exit(1);
+  // Silently continue if MCP tools not available
 }
-
-if (Object.keys(MCP_TOOLS).length === 0) {
-  console.error('[FATAL] MCP Helper: No MCP tools available - ALFRED_MCP_TOOLS is empty or not set');
-  console.error('[FATAL] MCP Helper: Check that all required MCP servers started successfully');
-  process.exit(1);
-}
-
 
 let requestId = 1;
-
-
 const pendingRequests = new Map();
+let inputBuffer = '';
 
+// Set up stdin consumption without readline
+if (process.stdin && process.stdin.readable) {
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (chunk) => {
+    inputBuffer += chunk;
+    const lines = inputBuffer.split('\n');
+    inputBuffer = lines.pop() || '';
 
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-  terminal: false
-});
-
-
-rl.on('line', (line) => {
-  try {
-    const response = JSON.parse(line);
-    if (response.id && pendingRequests.has(response.id)) {
-      const { resolve, reject } = pendingRequests.get(response.id);
-      pendingRequests.delete(response.id);
-
-      if (response.error) {
-        reject(new Error(response.error.message || 'MCP tool call failed'));
-      } else {
-        resolve(response.result);
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const response = JSON.parse(line);
+        if (response.id && pendingRequests.has(response.id)) {
+          const { resolve, reject } = pendingRequests.get(response.id);
+          pendingRequests.delete(response.id);
+          if (response.error) {
+            reject(new Error(response.error.message || 'MCP tool call failed'));
+          } else {
+            resolve(response.result);
+          }
+        }
+      } catch (e) {
+        // Ignore parse errors
       }
     }
-  } catch (e) {
-    console.error('[MCP Helper] Failed to parse response:', e.message);
-  }
-});
+  });
+}
 
 
 function callMCPTool(toolName, args = {}) {
@@ -67,14 +56,20 @@ function callMCPTool(toolName, args = {}) {
 
     pendingRequests.set(id, { resolve, reject });
 
-    process.stdout.write(JSON.stringify(request) + '\n');
+    try {
+      process.stdout.write(JSON.stringify(request) + '\n');
+    } catch (error) {
+      pendingRequests.delete(id);
+      reject(new Error(`Failed to send MCP request: ${error.message}`));
+      return;
+    }
 
     setTimeout(() => {
       if (pendingRequests.has(id)) {
         pendingRequests.delete(id);
-        reject(new Error(`MCP tool ${toolName} timed out after 30s`));
+        reject(new Error(`MCP tool call timeout for ${toolName} after 10s`));
       }
-    }, 30000);
+    }, 10000);
   });
 }
 
