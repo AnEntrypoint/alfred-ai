@@ -12,10 +12,18 @@ export class ExecutionHelpers {
   static getFileExtension(runtime, code = '') {
     switch (runtime) {
       case 'nodejs':
-        const hasImport = /^import\s+/m.test(code) || /\nimport\s+/.test(code);
-        const hasAwait = /\bawait\s+/i.test(code);
+        // Check for require() statements first - prioritize CJS when present
+        const hasRequire = /(?:^|\s)require\s*\(/m.test(code);
+
+        // Check for import statements (static and dynamic)
+        const hasStaticImport = /^import\s+/m.test(code) || /\nimport\s+/.test(code);
         const hasDynamicImport = /\bimport\s*\(/.test(code);
-        const useESM = hasImport || hasAwait || hasDynamicImport;
+
+        // Check for top-level await (only if no require() present)
+        const hasTopLevelAwait = !hasRequire && /(?:^|\s)await\s+/m.test(code);
+
+        // Determine module type: prioritize CJS if require() is present
+        const useESM = !hasRequire && (hasStaticImport || hasDynamicImport || hasTopLevelAwait);
         return useESM ? '.mjs' : '.cjs';
       case 'deno':
         return '.ts';
@@ -197,9 +205,51 @@ export class ExecutionHelpers {
   static async setupTempFile(code, runtime) {
     const extension = this.getFileExtension(runtime, code);
     const cleanCode = this.sanitizeCode(code);
+
+    // Add helpful variable definitions to prevent undefined variable errors
+    const codeWithVars = this.injectHelpfulVariables(cleanCode, runtime);
+
     const tempFile = join(tmpdir(), `alfred-ai-${uuidv4()}${extension}`);
-    fs.writeFileSync(tempFile, cleanCode);
+    fs.writeFileSync(tempFile, codeWithVars);
     return tempFile;
+  }
+
+  static injectHelpfulVariables(code, runtime) {
+    // Only inject for JavaScript runtimes
+    if (!['nodejs', 'deno', 'bun'].includes(runtime)) {
+      return code;
+    }
+
+    const workingDir = process.env.CODEMODE_WORKING_DIRECTORY || process.cwd();
+
+    // Create variable definitions that will be available in execution context
+    const varDefinitions = `
+// Alfred AI Execution Context - Common Variables
+var systemDir = '${workingDir}';
+var workingDir = '${workingDir}';
+var projectDir = '${workingDir}';
+var rootDir = '${workingDir}';
+
+// Path helpers (Node.js style)
+const path = require('path');
+const resolvePath = (...paths) => path.resolve('${workingDir}', ...paths);
+const joinPath = (...paths) => path.join(...paths);
+
+// Ensure fs is available (for file operations)
+const fs = require('fs');
+
+`;
+
+    // Insert definitions at the beginning of the code
+    // But be careful not to break shebangs
+    if (code.startsWith('#!')) {
+      const shebangEnd = code.indexOf('\n');
+      const shebang = code.substring(0, shebangEnd + 1);
+      const restOfCode = code.substring(shebangEnd + 1);
+      return shebang + varDefinitions + restOfCode;
+    } else {
+      return varDefinitions + code;
+    }
   }
 
   static async setupMcpHelper() {
@@ -216,46 +266,43 @@ export class ExecutionHelpers {
       console.error('[execution] ⚠ CJS copy failed, creating inline fallback');
       const cjsContent = `#!/usr/bin/env node
 
-const readline = require('readline');
-
 const MCP_TOOLS_JSON = process.env.ALFRED_MCP_TOOLS || '{}';
 let MCP_TOOLS = {};
 try {
   MCP_TOOLS = JSON.parse(MCP_TOOLS_JSON);
 } catch (e) {
-  console.error('[FATAL] MCP Helper: Failed to parse ALFRED_MCP_TOOLS:', e.message);
-  process.exit(1);
-}
-
-if (Object.keys(MCP_TOOLS).length === 0) {
-  console.error('[FATAL] MCP Helper: No MCP tools available');
-  process.exit(1);
+  // Silently continue
 }
 
 let requestId = 1;
 const pendingRequests = new Map();
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-  terminal: false
-});
+let inputBuffer = '';
 
-rl.on('line', (line) => {
-  try {
-    const response = JSON.parse(line);
-    if (response.id && pendingRequests.has(response.id)) {
-      const { resolve, reject } = pendingRequests.get(response.id);
-      pendingRequests.delete(response.id);
-      if (response.error) {
-        reject(new Error(response.error.message || 'MCP tool call failed'));
-      } else {
-        resolve(response.result);
+if (process.stdin && process.stdin.readable) {
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (chunk) => {
+    inputBuffer += chunk;
+    const lines = inputBuffer.split('\\n');
+    inputBuffer = lines.pop() || '';
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const response = JSON.parse(line);
+        if (response.id && pendingRequests.has(response.id)) {
+          const { resolve, reject } = pendingRequests.get(response.id);
+          pendingRequests.delete(response.id);
+          if (response.error) {
+            reject(new Error(response.error.message || 'MCP tool call failed'));
+          } else {
+            resolve(response.result);
+          }
+        }
+      } catch (e) {
+        // Ignore parse errors
       }
     }
-  } catch (e) {
-    console.error('[MCP Helper] Failed to parse response:', e.message);
-  }
-});
+  });
+}
 
 function callMCPTool(toolName, args = {}) {
   return new Promise((resolve, reject) => {
@@ -329,28 +376,33 @@ try {
 
 let requestId = 1;
 const pendingRequests = new Map();
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-  terminal: false
-});
+let inputBuffer = '';
 
-rl.on('line', (line) => {
-  try {
-    const response = JSON.parse(line);
-    if (response.id && pendingRequests.has(response.id)) {
-      const { resolve, reject } = pendingRequests.get(response.id);
-      pendingRequests.delete(response.id);
-      if (response.error) {
-        reject(new Error(response.error.message || 'MCP tool call failed'));
-      } else {
-        resolve(response.result);
+if (process.stdin && process.stdin.readable) {
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (chunk) => {
+    inputBuffer += chunk;
+    const lines = inputBuffer.split('\\n');
+    inputBuffer = lines.pop() || '';
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const response = JSON.parse(line);
+        if (response.id && pendingRequests.has(response.id)) {
+          const { resolve, reject } = pendingRequests.get(response.id);
+          pendingRequests.delete(response.id);
+          if (response.error) {
+            reject(new Error(response.error.message || 'MCP tool call failed'));
+          } else {
+            resolve(response.result);
+          }
+        }
+      } catch (e) {
+        // Ignore parse errors
       }
     }
-  } catch (e) {
-    console.error('[MCP Helper] Failed to parse response:', e.message);
-  }
-});
+  });
+}
 
 function callMCPTool(toolName, args = {}) {
   return new Promise((resolve, reject) => {
@@ -419,7 +471,16 @@ export default exportObj;
       ...process.env,
       ALFRED_MCP_TOOLS: JSON.stringify(mcpManager ? mcpManager.getAllTools() : {}),
       CODEMODE_WORKING_DIRECTORY: originalCwd,
-      NODE_PATH: nodePath
+      NODE_PATH: nodePath,
+      // Add common helpful variables for execution context (as strings)
+      SYSTEM_DIR: originalCwd,
+      WORKING_DIR: originalCwd,
+      PROJECT_DIR: originalCwd,
+      ROOT_DIR: originalCwd,
+      // Add system info
+      PLATFORM: process.platform,
+      NODE_VERSION: process.version,
+      ARCH: process.arch
     };
   }
 
