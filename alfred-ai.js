@@ -806,6 +806,10 @@ async function runCLIMode(taskPrompt) {
 
     await runAgenticLoop(currentPrompt, mcpServer, apiKey, true, false, historyManager);
 
+    if (typeof executionManager !== 'undefined' && executionManager.callFinalPrompt) {
+      executionManager.callFinalPrompt();
+    }
+
     if (typeof executionManager !== 'undefined' && executionManager.getTodoStatus) {
       try {
         const todos = executionManager.getTodoStatus();
