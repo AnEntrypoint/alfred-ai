@@ -72,8 +72,6 @@ function callMCPTool(toolName, args = {}) {
   });
 }
 
-import path from 'path';
-
 // Get working directory from environment or use current
 const workingDir = process.env.CODEMODE_WORKING_DIRECTORY || process.cwd();
 
@@ -81,6 +79,7 @@ const workingDir = process.env.CODEMODE_WORKING_DIRECTORY || process.cwd();
 const pathHelper = {
   // Resolve path relative to working directory
   resolve: (...paths) => {
+    const path = require('path');
     const relativePath = path.join(...paths);
     if (path.isAbsolute(relativePath)) {
       return relativePath;
@@ -92,16 +91,28 @@ const pathHelper = {
   cwd: () => workingDir,
 
   // Join paths
-  join: (...segments) => path.join(...segments),
+  join: (...segments) => {
+    const path = require('path');
+    return path.join(...segments);
+  },
 
   // Get file extension
-  ext: (filepath) => path.extname(filepath),
+  ext: (filepath) => {
+    const path = require('path');
+    return path.extname(filepath);
+  },
 
   // Get directory name
-  dir: (filepath) => path.dirname(filepath),
+  dir: (filepath) => {
+    const path = require('path');
+    return path.dirname(filepath);
+  },
 
   // Get file name
-  basename: (filepath) => path.basename(filepath)
+  basename: (filepath) => {
+    const path = require('path');
+    return path.basename(filepath);
+  }
 };
 
 const mcp = {};

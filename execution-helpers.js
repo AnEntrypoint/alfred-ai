@@ -324,18 +324,17 @@ function callMCPTool(toolName, args = {}) {
   });
 }
 
-const path = require('path');
 const workingDir = process.env.CODEMODE_WORKING_DIRECTORY || process.cwd();
 const pathHelper = {
   resolve: (...paths) => {
-    const relativePath = path.join(...paths);
-    return path.isAbsolute(relativePath) ? relativePath : path.join(workingDir, relativePath);
+    const relativePath = require('path').join(...paths);
+    return require('path').isAbsolute(relativePath) ? relativePath : require('path').join(workingDir, relativePath);
   },
   cwd: () => workingDir,
-  join: (...segments) => path.join(...segments),
-  ext: (filepath) => path.extname(filepath),
-  dir: (filepath) => path.dirname(filepath),
-  basename: (filepath) => path.basename(filepath)
+  join: (...segments) => require('path').join(...segments),
+  ext: (filepath) => require('path').extname(filepath),
+  dir: (filepath) => require('path').dirname(filepath),
+  basename: (filepath) => require('path').basename(filepath)
 };
 
 const mcp = {};
