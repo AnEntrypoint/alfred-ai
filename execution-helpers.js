@@ -224,19 +224,11 @@ export class ExecutionHelpers {
 
     // Create variable definitions that will be available in execution context
     const varDefinitions = `
-// Alfred AI Execution Context - Common Variables
+// Alfred AI Execution Context - Working Directory Variables
 var systemDir = '${workingDir}';
-var workingDir = '${workingDir}';
 var projectDir = '${workingDir}';
 var rootDir = '${workingDir}';
-
-// Path helpers (Node.js style)
-const path = require('path');
-const resolvePath = (...paths) => path.resolve('${workingDir}', ...paths);
-const joinPath = (...paths) => path.join(...paths);
-
-// Ensure fs is available (for file operations)
-const fs = require('fs');
+var codeDir = '${workingDir}';
 
 `;
 
@@ -363,8 +355,6 @@ module.exports = Object.assign(mcp, { path: pathHelper, __workingDir: workingDir
       console.error('[execution] ⚠ MJS copy failed, creating inline fallback');
       const mjsContent = `#!/usr/bin/env node
 
-import readline from 'readline';
-
 const MCP_TOOLS_JSON = process.env.ALFRED_MCP_TOOLS || '{}';
 let MCP_TOOLS = {};
 try {
@@ -423,18 +413,30 @@ function callMCPTool(toolName, args = {}) {
   });
 }
 
-import path from 'path';
 const workingDir = process.env.CODEMODE_WORKING_DIRECTORY || process.cwd();
 const pathHelper = {
   resolve: (...paths) => {
+    const path = require('path');
     const relativePath = path.join(...paths);
     return path.isAbsolute(relativePath) ? relativePath : path.join(workingDir, relativePath);
   },
   cwd: () => workingDir,
-  join: (...segments) => path.join(...segments),
-  ext: (filepath) => path.extname(filepath),
-  dir: (filepath) => path.dirname(filepath),
-  basename: (filepath) => path.basename(filepath)
+  join: (...segments) => {
+    const path = require('path');
+    return path.join(...segments);
+  },
+  ext: (filepath) => {
+    const path = require('path');
+    return path.extname(filepath);
+  },
+  dir: (filepath) => {
+    const path = require('path');
+    return path.dirname(filepath);
+  },
+  basename: (filepath) => {
+    const path = require('path');
+    return path.basename(filepath);
+  }
 };
 
 const mcp = {};
