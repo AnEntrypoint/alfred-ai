@@ -168,14 +168,14 @@ class MCPManager extends EventEmitter {
           capabilities: {},
           clientInfo: { name: 'alfred-ai', version: '1.0.0' }
         }
-      }, 50000);
+      }, 180000);
 
       console.error(`[${serverName}] Requesting tools list...`);
       const toolsResult = await this.sendRequestWithTimeout(serverName, {
         jsonrpc: '2.0',
         id: serverState.nextId++,
         method: 'tools/list'
-      }, 50000);
+      }, 180000);
 
       if (!toolsResult || !toolsResult.tools) {
         throw new Error(`Invalid tools response: ${JSON.stringify(toolsResult)}`);
@@ -264,7 +264,7 @@ class MCPManager extends EventEmitter {
       const timeout = setTimeout(() => {
         serverState.pendingCalls.delete(request.id);
         reject(new Error(`MCP request timeout for ${serverName}`));
-      }, 120000);
+      }, 3600000);
 
       serverState.pendingCalls.set(request.id, {
         resolve: (result) => { clearTimeout(timeout); resolve(result); },
