@@ -133,19 +133,18 @@ async function initializeHooks() {
     process.exit(1);
   }
 
-  try {
-    console.error('[Hooks] Loading WFGY hook...');
-    const wfgyOutput = await runHookProcess('WFGY', 'npx', ['-y', 'wfgy@latest', 'hook'], {
-      cwd: hookWorkingDir,
-      shell: true,
-      timeout: 90000
-    });
+  console.error('[Hooks] Loading WFGY hook (optional)...');
+  // Run WFGY hook in background without blocking
+  runHookProcess('WFGY', 'npx', ['-y', 'wfgy@latest', 'hook'], {
+    cwd: hookWorkingDir,
+    shell: true,
+    timeout: 5000
+  }).then(wfgyOutput => {
     console.error('[Hooks] ✓ WFGY hook loaded');
     historyManager.addHook('wfgy', wfgyOutput);
-  } catch (error) {
-    console.error(`[FATAL] WFGY hook failed: ${error.message}`);
-    process.exit(1);
-  }
+  }).catch(error => {
+    console.error(`[WARNING] WFGY hook failed (non-critical): ${error.message}`);
+  });
 
   historyManager.logHooks();
   console.error('[Hooks] ✓ All hooks loaded successfully');
