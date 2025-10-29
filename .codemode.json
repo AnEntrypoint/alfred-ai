@@ -6,49 +6,6 @@
       "args": [
         "built-in-tools-mcp.js"
       ]
-    },
-    "playwright": {
-      "command": "npx",
-      "args": [
-        "playwright",
-        "run-mcp-server",
-        "--user-data-dir",
-        "/tmp/playwright-mcp-primary"
-      ]
-    },
-    "playwright-secondary": {
-      "command": "npx",
-      "args": [
-        "playwright",
-        "run-mcp-server",
-        "--user-data-dir",
-        "/tmp/playwright-mcp-secondary"
-      ]
-    },
-    "playwright-tertiary": {
-      "command": "npx",
-      "args": [
-        "playwright",
-        "run-mcp-server",
-        "--user-data-dir",
-        "/tmp/playwright-mcp-tertiary"
-      ]
-    },
-    "vexify": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "vexify@latest",
-        "mcp"
-      ]
-    },
-    "playread": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "playread@latest",
-        "mcp"
-      ]
     }
   }
 }
