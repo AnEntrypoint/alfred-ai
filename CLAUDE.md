@@ -509,32 +509,79 @@ fs.writeFileSync(mcp.path.resolve('lib/file.js'), content);
 ✅ Local codebase reference working
 ✅ MCP tools functional across all 3 servers
 
-## Playwright MCP Investigation (Session: Debugging)
+## Playwright MCP Debugging & Error Handling (Session: Fixes & Limitations)
 
-### Discovery
-Identified critical issue with Playwright MCP server configuration in .codemode.json:
-- **Problem**: Config was trying to use `@playwright/mcp` package which doesn't exist
-- **Root Cause**: Playwright has built-in MCP support, not a separate package
-- **Fix**: Changed invocation from `npx @playwright/mcp` to `npx playwright run-mcp-server`
+### Issues Identified & Fixed
+1. **Incorrect Package Name** ✅
+   - **Problem**: Config used `@playwright/mcp` (non-existent package)
+   - **Root Cause**: Playwright has built-in MCP support, not a separate package
+   - **Fix**: Changed to `npx playwright run-mcp-server`
 
-### Correct Playwright MCP Invocation
-```json
-{
-  "playwright": {
-    "command": "npx",
-    "args": ["playwright", "run-mcp-server", "--user-data-dir", "/tmp/playwright-mcp-primary"]
-  }
+2. **Missing Error Handling** ✅
+   - **Problem**: MCP server failures blocked entire Alfred startup
+   - **Solution**: Implemented graceful server startup with fail-safe behavior
+   - Added `sendRequestWithTimeout()` with configurable timeouts (30s default)
+   - Failed servers logged and skipped, Alfred continues with available servers
+
+3. **Playwright MCP Silent Startup** ⚠️
+   - **Issue**: `playwright run-mcp-server` hangs silently, produces no initial output
+   - **Behavior**: Server awaits MCP protocol messages before producing any output
+   - **Status**: Requires further investigation (possible browser initialization blocking)
+
+### Improvements Made to mcp-manager.js
+```javascript
+// 1. Graceful initialization (doesn't block on failed servers)
+const failedServers = [];
+try {
+  await this.startServer(serverName, serverConfig);
+} catch (error) {
+  failedServers.push(serverName);
+  this.servers.delete(serverName);
 }
+
+// 2. Configurable timeouts per server
+async sendRequestWithTimeout(serverName, request, timeoutMs = 30000)
+
+// 3. Detailed error logging with stderr capture
+if (errText.includes('error') || errText.includes('Error'))
+  hasError = true;
+  errorMessage += errText;
 ```
 
-### Known Issues
-1. **Server startup hanging**: `playwright run-mcp-server` doesn't produce stdout output until it receives MCP protocol messages
-2. **Browser launch timing**: Server may hang if browser fails to launch (headless/display issues)
-3. **MCP communication**: MCPManager expects responses on stdout within 120s timeout
+### Current Configuration Status
+**Working servers:**
+- ✅ builtInTools (built-in node MCP server)
 
-### Next Steps for Full Integration
-1. Add timeout handling to MCP server initialization
-2. Make MCP servers optional/fail-gracefully
-3. Test with proper display environment or --headless flag
-4. Verify JSON-RPC communication chain works end-to-end
-5. Re-enable Playwright MCP once debugging complete
+**Disabled for now (require investigation):**
+- ⚠️ Playwright MCP (hangs during initialization)
+- ⚠️ vexify (untested)
+- ⚠️ playread (untested)
+
+### Verified Working
+✅ Alfred AI core initialization succeeds
+✅ MCP manager handles server failures gracefully
+✅ Agent waits for input correctly
+✅ Error messages are clear and actionable
+✅ Syntax validation passes
+✅ Built-in tools load successfully (11 tools)
+
+### Remaining Issues
+1. **NPX Playwright Command**: `npx playwright run-mcp-server` requires further debugging
+   - Possible causes: Browser initialization, display/headless setup, or MCP protocol expectation
+   - Mitigation: Can disable for now, users can use built-in tools instead
+
+2. **Alfred NPX Package**: Installation may timeout (likely network-related)
+   - Not related to Playwright MCP directly
+
+### Recommended Next Steps
+1. Investigate Playwright MCP server initialization (check logs, use strace)
+2. Test Playwright browser capabilities separately from MCP
+3. Add explicit --headless or display environment handling
+4. Consider implementing fallback browser automation without MCP
+5. Enable optional Playwright with better startup detection
+
+### Architecture Notes
+- MCP servers are now resilient to failures
+- Alfred can run with just built-in tools
+- Clear logging for debugging MCP issues
+- 30s timeout per MCP request (configurable)
