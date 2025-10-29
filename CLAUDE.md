@@ -508,3 +508,33 @@ fs.writeFileSync(mcp.path.resolve('lib/file.js'), content);
 ✅ Multi-directory support verified
 ✅ Local codebase reference working
 ✅ MCP tools functional across all 3 servers
+
+## Playwright MCP Investigation (Session: Debugging)
+
+### Discovery
+Identified critical issue with Playwright MCP server configuration in .codemode.json:
+- **Problem**: Config was trying to use `@playwright/mcp` package which doesn't exist
+- **Root Cause**: Playwright has built-in MCP support, not a separate package
+- **Fix**: Changed invocation from `npx @playwright/mcp` to `npx playwright run-mcp-server`
+
+### Correct Playwright MCP Invocation
+```json
+{
+  "playwright": {
+    "command": "npx",
+    "args": ["playwright", "run-mcp-server", "--user-data-dir", "/tmp/playwright-mcp-primary"]
+  }
+}
+```
+
+### Known Issues
+1. **Server startup hanging**: `playwright run-mcp-server` doesn't produce stdout output until it receives MCP protocol messages
+2. **Browser launch timing**: Server may hang if browser fails to launch (headless/display issues)
+3. **MCP communication**: MCPManager expects responses on stdout within 120s timeout
+
+### Next Steps for Full Integration
+1. Add timeout handling to MCP server initialization
+2. Make MCP servers optional/fail-gracefully
+3. Test with proper display environment or --headless flag
+4. Verify JSON-RPC communication chain works end-to-end
+5. Re-enable Playwright MCP once debugging complete
