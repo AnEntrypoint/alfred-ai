@@ -10,8 +10,8 @@
     "playwright": {
       "command": "npx",
       "args": [
-        "-y",
-        "@playwright/mcp",
+        "playwright",
+        "run-mcp-server",
         "--user-data-dir",
         "/tmp/playwright-mcp-primary"
       ]
@@ -19,8 +19,8 @@
     "playwright-secondary": {
       "command": "npx",
       "args": [
-        "-y",
-        "@playwright/mcp",
+        "playwright",
+        "run-mcp-server",
         "--user-data-dir",
         "/tmp/playwright-mcp-secondary"
       ]
@@ -28,8 +28,8 @@
     "playwright-tertiary": {
       "command": "npx",
       "args": [
-        "-y",
-        "@playwright/mcp",
+        "playwright",
+        "run-mcp-server",
         "--user-data-dir",
         "/tmp/playwright-mcp-tertiary"
       ]
