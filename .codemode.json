@@ -6,6 +6,15 @@
       "args": [
         "built-in-tools-mcp.js"
       ]
+    },
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "playwright",
+        "run-mcp-server",
+        "--user-data-dir",
+        "/tmp/alfred-playwright-primary"
+      ]
     }
   }
 }
