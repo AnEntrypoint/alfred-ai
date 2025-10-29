@@ -168,14 +168,14 @@ class MCPManager extends EventEmitter {
           capabilities: {},
           clientInfo: { name: 'alfred-ai', version: '1.0.0' }
         }
-      }, 30000);
+      }, 50000);
 
       console.error(`[${serverName}] Requesting tools list...`);
       const toolsResult = await this.sendRequestWithTimeout(serverName, {
         jsonrpc: '2.0',
         id: serverState.nextId++,
         method: 'tools/list'
-      }, 30000);
+      }, 50000);
 
       if (!toolsResult || !toolsResult.tools) {
         throw new Error(`Invalid tools response: ${JSON.stringify(toolsResult)}`);
