@@ -40,6 +40,8 @@ class MCPManager extends EventEmitter {
     const serverNames = Object.keys(this.config.config.mcpServers).filter(s => s !== 'alfred-ai');
     console.error(`[MCP] Starting ${serverNames.length} configured servers: ${serverNames.join(', ')}`);
 
+    const failedServers = [];
+
     for (const [serverName, serverConfig] of Object.entries(this.config.config.mcpServers)) {
       if (serverName === 'alfred-ai') continue;
 
@@ -47,8 +49,9 @@ class MCPManager extends EventEmitter {
         await this.startServer(serverName, serverConfig);
         console.error(`[MCP] ✓ ${serverName} server started`);
       } catch (error) {
-        console.error(`[FATAL] ${serverName} server failed to start: ${error.message}`);
-        process.exit(1);
+        console.error(`[MCP] ✗ ${serverName} server failed: ${error.message}`);
+        failedServers.push(serverName);
+        this.servers.delete(serverName);
       }
     }
 
@@ -65,10 +68,20 @@ class MCPManager extends EventEmitter {
       console.error('[MCP] ✓ Registered virtual builtInTools server');
     }
 
-    console.error('[MCP] Ready - All servers initialized\n');
+    const successCount = serverNames.length - failedServers.length;
+    if (successCount === 0) {
+      console.error('[WARNING] No MCP servers initialized, using built-in tools only');
+    } else {
+      console.error(`[MCP] Ready - ${successCount} of ${serverNames.length} servers initialized`);
+    }
+    if (failedServers.length > 0) {
+      console.error(`[MCP] Failed servers: ${failedServers.join(', ')}`);
+    }
+    console.error('[MCP] Continuing with available servers\n');
   }
 
   async startServer(serverName, serverConfig) {
+    console.error(`[${serverName}] Starting server with: ${serverConfig.command} ${serverConfig.args.join(' ')}`);
 
     const resolvedArgs = serverConfig.args.map(arg => {
       if (arg.endsWith('.js') && !arg.startsWith('-') && !arg.startsWith('/')) {
@@ -88,12 +101,17 @@ class MCPManager extends EventEmitter {
       tools: [],
       nextId: 0,
       buffer: '',
-      pendingCalls: new Map()
+      pendingCalls: new Map(),
+      lastActivity: Date.now()
     };
 
     this.servers.set(serverName, serverState);
 
+    let hasError = false;
+    let errorMessage = '';
+
     proc.stdout.on('data', (data) => {
+      serverState.lastActivity = Date.now();
       serverState.buffer += data.toString();
       const lines = serverState.buffer.split('\n');
       serverState.buffer = lines.pop() || '';
@@ -119,47 +137,93 @@ class MCPManager extends EventEmitter {
     });
 
     proc.stderr.on('data', (data) => {
-    });
-
-    proc.on('error', (err) => {
-      console.error(`[Server Error] ${serverName}: ${err.message}`);
-    });
-
-    proc.on('close', () => {
-      this.servers.delete(serverName);
-    });
-
-    await this.sendRequest(serverName, {
-      jsonrpc: '2.0',
-      id: serverState.nextId++,
-      method: 'initialize',
-      params: {
-        protocolVersion: '2024-11-05',
-        capabilities: {},
-        clientInfo: { name: 'alfred-ai', version: '1.0.0' }
+      const errText = data.toString();
+      if (errText.includes('error') || errText.includes('Error') || errText.includes('ENOENT')) {
+        hasError = true;
+        errorMessage += errText;
       }
     });
 
-    const toolsResult = await this.sendRequest(serverName, {
-      jsonrpc: '2.0',
-      id: serverState.nextId++,
-      method: 'tools/list'
+    proc.on('error', (err) => {
+      console.error(`[${serverName}] Process error: ${err.message}`);
+      hasError = true;
+      errorMessage = err.message;
     });
 
-    if (!toolsResult.tools) {
-      throw new Error(`No tools received from ${serverName}`);
+    proc.on('close', (code) => {
+      if (code !== 0 && code !== null) {
+        hasError = true;
+        errorMessage = `Process exited with code ${code}`;
+      }
+    });
+
+    try {
+      console.error(`[${serverName}] Sending initialize request...`);
+      await this.sendRequestWithTimeout(serverName, {
+        jsonrpc: '2.0',
+        id: serverState.nextId++,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2024-11-05',
+          capabilities: {},
+          clientInfo: { name: 'alfred-ai', version: '1.0.0' }
+        }
+      }, 30000);
+
+      console.error(`[${serverName}] Requesting tools list...`);
+      const toolsResult = await this.sendRequestWithTimeout(serverName, {
+        jsonrpc: '2.0',
+        id: serverState.nextId++,
+        method: 'tools/list'
+      }, 30000);
+
+      if (!toolsResult || !toolsResult.tools) {
+        throw new Error(`Invalid tools response: ${JSON.stringify(toolsResult)}`);
+      }
+
+      serverState.tools = toolsResult.tools;
+      console.error(`[${serverName}] ✓ Server ready with ${serverState.tools.length} tools`);
+
+      if (serverState.tools.length > 0) {
+        const toolNames = serverState.tools.map(t => t.name).join(', ');
+        console.error(`[${serverName}] Tools: ${toolNames.substring(0, 200)}`);
+      }
+
+      if (serverName.startsWith('playwright')) {
+        this.playwrightServers.push(serverName);
+        this.playwrightServerUsage.set(serverName, 0);
+      }
+    } catch (error) {
+      proc.kill('SIGTERM');
+      throw new Error(`${serverName} initialization failed: ${error.message}${errorMessage ? ` (stderr: ${errorMessage.substring(0, 200)})` : ''}`);
+    }
+  }
+
+  async sendRequestWithTimeout(serverName, request, timeoutMs = 30000) {
+    const serverState = this.servers.get(serverName);
+    if (!serverState) {
+      throw new Error(`MCP server ${serverName} not found`);
     }
 
-    serverState.tools = toolsResult.tools;
-    if (serverState.tools.length > 0) {
-      const toolNames = serverState.tools.map(t => t.name).join(', ');
-      console.error(`[${serverName}] Loaded: ${toolNames}`);
-    }
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        serverState.pendingCalls.delete(request.id);
+        reject(new Error(`MCP request timeout (${timeoutMs}ms) for ${serverName}`));
+      }, timeoutMs);
 
-    if (serverName.startsWith('playwright')) {
-      this.playwrightServers.push(serverName);
-      this.playwrightServerUsage.set(serverName, 0);
-    }
+      serverState.pendingCalls.set(request.id, {
+        resolve: (result) => { clearTimeout(timeout); resolve(result); },
+        reject: (error) => { clearTimeout(timeout); reject(error); }
+      });
+
+      try {
+        serverState.process.stdin.write(JSON.stringify(request) + '\n');
+      } catch (error) {
+        clearTimeout(timeout);
+        serverState.pendingCalls.delete(request.id);
+        reject(new Error(`Failed to send request to ${serverName}: ${error.message}`));
+      }
+    });
   }
 
   getPlaywrightServer() {
