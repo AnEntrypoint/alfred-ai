@@ -17,7 +17,7 @@ const OAUTH_CONFIG = {
   clientID: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
   redirectPort: 3567,
   redirectPath: '/auth/callback',
-  scopes: 'user:inference',
+  scopes: 'org:create_api_key user:profile user:inference',
   authorizationEndpoint: 'https://console.anthropic.com/oauth/authorize',
   tokenEndpoint: 'https://console.anthropic.com/oauth/token'
 };
