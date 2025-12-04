@@ -17,7 +17,7 @@ const OAUTH_CONFIG = {
   clientID: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
   redirectPort: 3567,
   redirectPath: '/auth/callback',
-  scopes: '', // Empty scopes - Anthropic OAuth will use defaults for subscription
+  scopes: 'inference', // Try simple scope name without colons
   authorizationEndpoint: 'https://console.anthropic.com/oauth/authorize',
   tokenEndpoint: 'https://console.anthropic.com/oauth/token'
 };
