@@ -12,12 +12,12 @@ const OAUTH_CACHE_DIR = path.join(os.homedir(), '.anthropic');
 const OAUTH_CACHE_FILE = path.join(OAUTH_CACHE_DIR, 'oauth-credentials.json');
 
 // Anthropic's public OAuth client ID from Claude Code
-// For Max/Pro subscription usage via OAuth (not API key generation)
+// For Max/Pro subscription usage via OAuth (subscription access, not API key generation)
 const OAUTH_CONFIG = {
   clientID: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
   redirectPort: 3567,
   redirectPath: '/auth/callback',
-  scopes: 'org:create_api_key user:profile user:inference',
+  scopes: 'user:profile user:inference',
   authorizationEndpoint: 'https://console.anthropic.com/oauth/authorize',
   tokenEndpoint: 'https://console.anthropic.com/oauth/token'
 };
