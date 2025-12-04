@@ -16,7 +16,7 @@ const OAUTH_CONFIG = {
   clientID: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
   redirectPort: 3567,
   redirectPath: '/auth/callback',
-  scopes: 'openid email profile offline_access',
+  scopes: '', // Empty scope - let Anthropic use defaults
   authorizationEndpoint: 'https://console.anthropic.com/oauth/authorize',
   tokenEndpoint: 'https://console.anthropic.com/oauth/token'
 };
@@ -99,7 +99,9 @@ async function authorize() {
     authUrl.searchParams.set('client_id', OAUTH_CONFIG.clientID);
     authUrl.searchParams.set('redirect_uri', redirectUri);
     authUrl.searchParams.set('response_type', 'code');
-    authUrl.searchParams.set('scope', OAUTH_CONFIG.scopes);
+    if (OAUTH_CONFIG.scopes) {
+      authUrl.searchParams.set('scope', OAUTH_CONFIG.scopes);
+    }
     authUrl.searchParams.set('state', state);
     authUrl.searchParams.set('code_challenge', challenge);
     authUrl.searchParams.set('code_challenge_method', 'S256');
