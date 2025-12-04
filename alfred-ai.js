@@ -18,6 +18,7 @@ import HistoryManager from './history-manager.js';
 import ExecutionManager from './execution-manager.js';
 import AlfredMCPServer from './alfred-mcp-server.js';
 import SystemPromptBuilder from './system-prompt-builder.js';
+import LLMProvider from './llm-provider.js';
 
 let config, mcpManager, historyManager, executionManager, authManager;
 
@@ -259,9 +260,7 @@ if (process.stderr && typeof process.stderr._handle !== 'undefined') {
 }
 
 
-async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, excludeAlfred = false, historyManager = null) {
-  const Anthropic = (await import('@anthropic-ai/sdk')).default;
-
+async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, excludeAlfred = false, historyManager = null, authManager = null) {
   const toolsResult = await mcpServer.handleRequest({
     method: 'tools/list',
     params: {}
@@ -271,9 +270,11 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
     toolsResult.tools = toolsResult.tools.filter(t => t.name !== 'alfred');
   }
 
-  const anthropic = new Anthropic({
-    apiKey,
-    baseURL: process.env.ANTHROPIC_BASE_URL
+  const llmProvider = new LLMProvider(authManager || {
+    getApiKey: () => apiKey,
+    getOAuthToken: () => null,
+    isApiKey: () => !!apiKey,
+    isOAuth: () => false
   });
 
   const cwd = process.cwd();
@@ -366,14 +367,7 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
       historyManager.performCleanup();
     }
 
-    const stream = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 8000,
-      tools: toolsResult.tools,
-      messages,
-      system: systemPrompt,
-      stream: true
-    });
+    const stream = await llmProvider.streamCompletion(messages, systemPrompt, toolsResult.tools);
 
     let currentText = '';
     let currentThinking = false;
@@ -808,7 +802,7 @@ async function runCLIMode(taskPrompt) {
   while (iterationCount < maxIterations) {
     iterationCount++;
 
-    await runAgenticLoop(currentPrompt, mcpServer, apiKey, true, false, historyManager);
+    await runAgenticLoop(currentPrompt, mcpServer, apiKey, true, false, historyManager, authManager);
 
     if (typeof executionManager !== 'undefined' && executionManager.callFinalPrompt) {
       executionManager.callFinalPrompt();
@@ -866,7 +860,7 @@ async function runCLIMode(taskPrompt) {
         console.error(`\n📝 Executing prompt: ${prompt}\n`);
 
         try {
-          await runAgenticLoop(prompt, mcpServer, apiKey, true, false, historyManager);
+          await runAgenticLoop(prompt, mcpServer, apiKey, true, false, historyManager, authManager);
           console.error('\n✅ Task completed\n');
           console.error('💬 Ready for next prompt. Press Ctrl+C to exit.\n');
         } catch (error) {
@@ -966,7 +960,7 @@ async function runInteractiveMode() {
       );
 
       try {
-        await runAgenticLoop(prompt, mcpServer, apiKey, true, false, historyManager);
+        await runAgenticLoop(prompt, mcpServer, apiKey, true, false, historyManager, authManager);
         console.error('\n✅ Task completed\n');
         console.error('💬 Ready for next prompt. Press Ctrl+C to exit.\n');
       } catch (error) {
