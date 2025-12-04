@@ -17,6 +17,7 @@ import MCPManager from './mcp-manager.js';
 import HistoryManager from './history-manager.js';
 import ExecutionManager from './execution-manager.js';
 import AlfredMCPServer from './alfred-mcp-server.js';
+import SystemPromptBuilder from './system-prompt-builder.js';
 
 let config, mcpManager, historyManager, executionManager, authManager;
 
@@ -305,6 +306,9 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
     ? `${taskPrompt}\n\nContext:\n${contextInfo.join('\n')}${hooksContent}`
     : `${taskPrompt}${hooksContent}`;
 
+  const mcpToolDocs = SystemPromptBuilder.extractMCPToolDocs(toolsResult.tools);
+  const systemPrompt = SystemPromptBuilder.buildCodeExecutionPrompt(toolsResult.tools, mcpToolDocs);
+
   const messages = [{
     role: 'user',
     content: enhancedPrompt
@@ -367,6 +371,7 @@ async function runAgenticLoop(taskPrompt, mcpServer, apiKey, verbose = true, exc
       max_tokens: 8000,
       tools: toolsResult.tools,
       messages,
+      system: systemPrompt,
       stream: true
     });
 

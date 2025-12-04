@@ -23,6 +23,7 @@
     "mcp-runtime-helpers.cjs",
     "mcp-runtime-helpers.mjs",
     "tool-schema-builder.js",
+    "system-prompt-builder.js",
     "alfred-mcp-server.js",
     "history-manager.js",
     "linting-rules.js",
