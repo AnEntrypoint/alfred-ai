@@ -1,6 +1,6 @@
 {
   "name": "alfred-ai",
-  "version": "5.20.60",
+  "version": "5.20.61",
   "description": "Alfred AI - A simplified, SDK-free version of codemode using direct MCP client/server communication with automatic OAuth authentication",
   "main": "alfred-ai.js",
   "type": "module",
@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node alfred-ai.js",
-    "login": "node oauth-pkce-setup.js",
+    "login": "node oauth-authorize.js",
     "test": "node integration-test.js"
   },
   "files": [
@@ -28,7 +28,7 @@
     "system-prompt-builder.js",
     "llm-provider.js",
     "oauth-login.js",
-    "oauth-pkce-setup.js",
+    "oauth-authorize.js",
     "oauth-manager.js",
     "alfred-mcp-server.js",
     "history-manager.js",
@@ -46,7 +46,6 @@
     "better-sqlite3": "^12.4.1",
     "fast-glob": "^3.3.3",
     "node-fetch": "^3.3.2",
-    "playwright": "^1.56.1",
     "uuid": "^9.0.1"
   },
   "devDependencies": {
