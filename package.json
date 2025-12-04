@@ -8,7 +8,9 @@
     "alfred-ai": "alfred-ai.js"
   },
   "scripts": {
-    "start": "node alfred-ai.js"
+    "start": "node alfred-ai.js",
+    "login": "node oauth-login.js",
+    "test": "node integration-test.js"
   },
   "files": [
     "alfred-ai.js",
@@ -25,6 +27,7 @@
     "tool-schema-builder.js",
     "system-prompt-builder.js",
     "llm-provider.js",
+    "oauth-login.js",
     "alfred-mcp-server.js",
     "history-manager.js",
     "linting-rules.js",
