@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node alfred-ai.js",
-    "login": "node oauth-login.js",
+    "login": "node oauth-pkce-setup.js",
     "test": "node integration-test.js"
   },
   "files": [
@@ -28,6 +28,8 @@
     "system-prompt-builder.js",
     "llm-provider.js",
     "oauth-login.js",
+    "oauth-pkce-setup.js",
+    "oauth-manager.js",
     "alfred-mcp-server.js",
     "history-manager.js",
     "linting-rules.js",
