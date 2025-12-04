@@ -7,6 +7,8 @@ import * as readline from 'readline';
 
 const OAUTH_CACHE_DIR = path.join(os.homedir(), '.anthropic');
 const OAUTH_CACHE_FILE = path.join(OAUTH_CACHE_DIR, 'oauth-token');
+const CLAUDE_CODE_DIR = path.join(os.homedir(), '.claude-code');
+const CLAUDE_CODE_AUTH_FILE = path.join(CLAUDE_CODE_DIR, 'auth.json');
 
 async function promptUser(question) {
   const rl = readline.createInterface({
@@ -22,10 +24,55 @@ async function promptUser(question) {
   });
 }
 
+function loadClaudeCodeCredentials() {
+  try {
+    if (fs.existsSync(CLAUDE_CODE_AUTH_FILE)) {
+      const authData = JSON.parse(fs.readFileSync(CLAUDE_CODE_AUTH_FILE, 'utf8'));
+      if (authData.token) {
+        return authData.token;
+      }
+    }
+  } catch (error) {
+    // Silently continue if Claude Code auth not available
+  }
+  return null;
+}
+
 async function loginWithOAuth() {
   console.log('\n═══════════════════════════════════════════════════════════');
   console.log('  Alfred AI - OAuth Login for Max Plan Access');
   console.log('═══════════════════════════════════════════════════════════\n');
+
+  // Check if Claude Code credentials are available
+  const claudeCodeToken = loadClaudeCodeCredentials();
+  if (claudeCodeToken) {
+    console.log('✅ Found Claude Code credentials!\n');
+    const useExisting = await promptUser('Use Claude Code\'s OAuth token? (y/n): ');
+    if (useExisting.toLowerCase() === 'y' || useExisting.toLowerCase() === 'yes') {
+      try {
+        if (!fs.existsSync(OAUTH_CACHE_DIR)) {
+          fs.mkdirSync(OAUTH_CACHE_DIR, { recursive: true });
+        }
+
+        const cacheData = {
+          token: claudeCodeToken,
+          cachedAt: new Date().toISOString(),
+          expiresAt: null,
+          source: 'claude-code'
+        };
+
+        fs.writeFileSync(OAUTH_CACHE_FILE, JSON.stringify(cacheData, null, 2), 'utf8');
+        fs.chmodSync(OAUTH_CACHE_FILE, 0o600);
+
+        console.log('\n✅ Claude Code OAuth token imported successfully!');
+        console.log(`   Token: ${claudeCodeToken.substring(0, 20)}...`);
+        console.log(`   Cached at: ${OAUTH_CACHE_FILE}\n`);
+        return;
+      } catch (error) {
+        console.error('\n❌ Failed to import Claude Code token:', error.message);
+      }
+    }
+  }
 
   console.log('To use Alfred AI with maximum API access, authenticate via OAuth.\n');
   console.log('Steps:');
