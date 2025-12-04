@@ -17,7 +17,7 @@ const OAUTH_CONFIG = {
   clientID: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
   redirectPort: 3567,
   redirectPath: '/auth/callback',
-  scopes: 'user:profile user:inference',
+  scopes: '', // Empty scopes - Anthropic OAuth will use defaults for subscription
   authorizationEndpoint: 'https://console.anthropic.com/oauth/authorize',
   tokenEndpoint: 'https://console.anthropic.com/oauth/token'
 };
@@ -95,15 +95,19 @@ async function authorize() {
     const redirectUri = `http://localhost:${OAUTH_CONFIG.redirectPort}${OAUTH_CONFIG.redirectPath}`;
     const state = crypto.randomBytes(16).toString('hex');
 
-    // Build authorization URL
-    const authUrl = new URL(OAUTH_CONFIG.authorizationEndpoint);
-    authUrl.searchParams.set('client_id', OAUTH_CONFIG.clientID);
-    authUrl.searchParams.set('redirect_uri', redirectUri);
-    authUrl.searchParams.set('response_type', 'code');
-    authUrl.searchParams.set('scope', OAUTH_CONFIG.scopes);
-    authUrl.searchParams.set('state', state);
-    authUrl.searchParams.set('code_challenge', challenge);
-    authUrl.searchParams.set('code_challenge_method', 'S256');
+    // Build authorization URL manually to preserve colon characters in scopes
+    const params = new URLSearchParams();
+    params.set('client_id', OAUTH_CONFIG.clientID);
+    params.set('redirect_uri', redirectUri);
+    params.set('response_type', 'code');
+    if (OAUTH_CONFIG.scopes) {
+      params.set('scope', OAUTH_CONFIG.scopes);
+    }
+    params.set('state', state);
+    params.set('code_challenge', challenge);
+    params.set('code_challenge_method', 'S256');
+
+    const authUrl = `${OAUTH_CONFIG.authorizationEndpoint}?${params.toString()}`;
 
     console.log('📝 Steps:');
     console.log('   1. Copy the link below and open it in your browser');
