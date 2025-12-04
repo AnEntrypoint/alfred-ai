@@ -17,8 +17,8 @@ const OAUTH_CONFIG = {
   redirectPort: 3567,
   redirectPath: '/auth/callback',
   scopes: 'openid email profile offline_access',
-  authorizationEndpoint: 'https://console.anthropic.com/api/oauth/authorize',
-  tokenEndpoint: 'https://console.anthropic.com/api/oauth/token'
+  authorizationEndpoint: 'https://console.anthropic.com/oauth/authorize',
+  tokenEndpoint: 'https://console.anthropic.com/oauth/token'
 };
 
 let authorizationCode = null;
